@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import secrets
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
@@ -128,7 +129,7 @@ def require_token(
     supplied = x_api_token
     if supplied is None and authorization and authorization.lower().startswith("bearer "):
         supplied = authorization[7:].strip()
-    if supplied != expected:
+    if supplied is None or not secrets.compare_digest(supplied, expected):
         raise HTTPException(status_code=401, detail="Invalid or missing API token")
 
 
@@ -175,6 +176,10 @@ class CorrectionsRequest(BaseModel):
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    if os.environ.get("OCR_LLM_PROCESSOR"):
+        from ocr_api.llm_processor import validate_model
+
+        validate_model()
     path = init_db()
     print(f"[o2j] SQLite gotowy: {path}")
     yield
@@ -182,11 +187,15 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="Odwołania2json API", version="0.1.0", lifespan=lifespan)
 
-_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
+_cors_raw = os.environ.get("CORS_ORIGINS", "")
+_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()] or ["http://localhost:3000"]
+# Wildcard and credentials are mutually exclusive by spec: never reflect any
+# Origin with allow_credentials=True.
+_allow_credentials = "*" not in _origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_origins or ["*"],
-    allow_credentials=True,
+    allow_origins=_origins,
+    allow_credentials=_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )

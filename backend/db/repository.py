@@ -445,8 +445,20 @@ def save_corrections(
     if result is None:
         raise ValueError(f"document {document_id!r} has no stored result")
 
-    predicted = json.loads(result["canonical_json"])
-    corrected = json.loads(result["canonical_json"])
+    # Base this session on the CURRENT effective JSON (latest session's
+    # corrected_json, else the pristine model output) so earlier fixes survive.
+    latest = conn.execute(
+        """SELECT corrected_json FROM correction_sessions WHERE document_id = ?
+           ORDER BY created_at DESC, rowid DESC LIMIT 1""",
+        (document_id,),
+    ).fetchone()
+    base_json = latest["corrected_json"] if latest else result["canonical_json"]
+    # predicted_value = the value the user is currently correcting (current
+    # effective value), NOT the pristine output, so training pairs reflect what
+    # the model actually produced for this session. Stores 1-3 stay immutable;
+    # get_effective_result()["predicted_json"] still returns the original output.
+    predicted = json.loads(base_json)
+    corrected = json.loads(base_json)
     method_by_path: dict[str, Any] = {}
     provenance = json.loads(result["provenance_json"]) if result["provenance_json"] else {}
     if isinstance(provenance, dict):

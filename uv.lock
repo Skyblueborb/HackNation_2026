@@ -995,6 +995,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "jinja2" },
+    { name = "jiwer" },
     { name = "openai" },
     { name = "pdfplumber" },
     { name = "pillow" },
@@ -1039,6 +1040,7 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'serve'" },
     { name = "httpx", marker = "extra == 'serve'" },
     { name = "jinja2" },
+    { name = "jiwer" },
     { name = "jiwer", marker = "extra == 'lab'" },
     { name = "matplotlib", marker = "extra == 'lab'" },
     { name = "mlx-vlm", marker = "extra == 'local'" },

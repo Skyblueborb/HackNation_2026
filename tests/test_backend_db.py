@@ -145,6 +145,31 @@ def test_result_store_is_immutable_but_effective_json_is_corrected(tmp_path):
         assert effective["correction_count"] == 1
 
 
+def test_sequential_correction_sessions_preserve_earlier_fixes(tmp_path):
+    """Druga sesja poprawiająca inne pole nie cofa poprawki z pierwszej sesji."""
+    init_db(tmp_path / "o2j.db")
+    original = _base_payload()
+    with db(tmp_path / "o2j.db") as conn:
+        first = repo.ingest_document(conn, client_token="tab-seq", doc_class="odwolanie",
+                                     canonical_json=original)
+        doc_id = first["document_id"]
+
+        repo.save_corrections(conn, document_id=doc_id,
+                              items=[{"field_path": "Odwolujacy[0].nazwa",
+                                      "corrected_value": "POPRAWIONA NAZWA"}])
+        repo.save_corrections(conn, document_id=doc_id,
+                              items=[{"field_path": "Odwolujacy[0].nip",
+                                      "corrected_value": BAD_NIP}])
+
+        effective = repo.get_effective_result(conn, doc_id)
+        assert effective["canonical_json"]["Odwolujacy"][0]["nazwa"] == "POPRAWIONA NAZWA"
+        assert effective["canonical_json"]["Odwolujacy"][0]["nip"] == BAD_NIP
+        assert effective["correction_count"] == 2
+        # predicted_json pozostaje oryginalnym wynikiem modelu (magazyn 1-3).
+        assert effective["predicted_json"]["Odwolujacy"][0]["nazwa"] == "STRABAG Sp. z o.o."
+        assert effective["predicted_json"]["Odwolujacy"][0]["nip"] == GOOD_NIP
+
+
 def test_three_classes_are_stored_in_three_different_tables(tmp_path):
     init_db(tmp_path / "o2j.db")
     with db(tmp_path / "o2j.db") as conn:

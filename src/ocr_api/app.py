@@ -15,8 +15,18 @@ from ocr_common import (
     run_ocr_async,
     verify_key,
 )
-from ocr_common.common import logger
+from ocr_common.common import get_api_key, logger
 from ocr_api.backends import ATTN_IMPL, CudaBackend, MODEL_ID, cuda_session
+
+
+def validate_startup() -> None:
+    """Fail fast on config errors that would otherwise break the first request."""
+    get_api_key()
+    if os.environ.get("OCR_LLM_PROCESSOR"):
+        from ocr_api.llm_processor import validate_model
+
+        validate_model()
+
 
 PRELOAD = os.environ.get("OCR_PRELOAD", "1") == "1"
 PROCESSOR = load_llm_processor(os.environ.get("OCR_LLM_PROCESSOR"))
@@ -25,6 +35,7 @@ configure_logging(verbose=os.environ.get("OCR_VERBOSE", "0") == "1")
 
 @contextlib.asynccontextmanager
 async def lifespan(_app: FastAPI):
+    validate_startup()
     logger.info(
         "starting: backend=cuda model=%s dtype=bf16 attn=%s preload=%s llm=%s",
         MODEL_ID,
