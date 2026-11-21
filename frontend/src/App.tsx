@@ -517,26 +517,19 @@ export default function App() {
     setPelnomocnictwoData(newSlots[0].data.pelnomocnictwo);
     setPrzelewData(newSlots[0].data.przelew);
 
-    setTimeout(() => {
-      setLoadingProgress(40);
-      setLoadingStep(2);
-    }, 500);
+    setLoadingProgress(40);
+    setLoadingStep(2);
 
-    setTimeout(() => {
-      setLoadingProgress(75);
-      setLoadingStep(3);
-    }, 1000);
-
-    setTimeout(() => {
+    if (pdfs.length === 0) {
+      setErrorMessage('W archiwum nie znaleziono plików PDF — wgraj ZIP z plikami .pdf.');
       setLoadingProgress(100);
       setLoadingStep(4);
-    }, 1500);
-
-    setTimeout(() => {
       setStage('splitscreen');
-    }, 1800);
+      return;
+    }
 
     // Wyślij skany do backendu: OCR + LLM + zapis do SQLite.
+    // Czekamy z przejściem do formularza, żeby wynik nie nadpisał danych wpisanych przez użytkownika.
     // Demo działa dalej, jeśli backend nie jest uruchomiony.
     try {
       const token = getClientToken();
@@ -582,6 +575,9 @@ export default function App() {
     } catch (e) {
       console.warn('Backend analizy niedostępny:', e);
     }
+    setLoadingProgress(100);
+    setLoadingStep(4);
+    setStage('splitscreen');
   };
 
   // Zapisz dane aktywnego formularza do listy dokumentów i przełącz na inny.
