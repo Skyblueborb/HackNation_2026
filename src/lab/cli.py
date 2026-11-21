@@ -614,5 +614,76 @@ def report() -> None:
     raise NotImplementedError
 
 
+@app.command("model-check")
+def model_check_cmd(
+    data_root: Path | None = typer.Option(None, "--data-root"),
+    corpus: str = typer.Option("all", "--corpus", help="przyklad, skany or all"),
+    count: int = typer.Option(5, "--count", help="Number of sets; 0 means all."),
+    random_sample: bool = typer.Option(False, "--random", help="Sample sets randomly."),
+    seed: int = typer.Option(42, "--seed"),
+    sets: str | None = typer.Option(None, "--sets", help="Comma-separated set ids."),
+    pdf: list[Path] | None = typer.Option(None, "--pdf", help="Explicit PDF (repeatable)."),
+    ocr_model: list[str] | None = typer.Option(
+        None, "--ocr-model", help="MLX weights path or 'text' (repeatable)."
+    ),
+    llm_profile: list[str] | None = typer.Option(
+        None, "--llm-profile", help="Profile id from configs/models.yaml (repeatable)."
+    ),
+    analysis: str = typer.Option("all", "--analysis", help="e2e, ocr, llm or all"),
+    out_dir: Path | None = typer.Option(None, "--out-dir"),
+) -> None:
+    """Benchmark OCR models and LLM profiles, saving raw OCR text for diagnosis."""
+    from lab import model_check as mc
+    from lab.llm.config import load_models
+    from ocr_api.llm_processor import validate_model
+    from ocr_api.pdf_to_json import llm_health
+
+    if corpus not in ("przyklad", "skany", "all"):
+        raise typer.BadParameter("--corpus must be przyklad, skany or all")
+    requested = {part.strip() for part in analysis.split(",") if part.strip()}
+    if not requested or not requested <= {"e2e", "ocr", "llm", "all"}:
+        raise typer.BadParameter("--analysis must contain e2e, ocr, llm or all")
+    analyses = ["e2e", "ocr", "llm"] if "all" in requested else sorted(requested)
+
+    resolved_root = paths.validate_data_root(
+        data_root if data_root is not None else paths.data_root()
+    )
+    if ocr_model:
+        ocr_models = list(ocr_model)
+    else:
+        default_paths = [
+            paths.REPO_ROOT / "models" / "LightOnOCR-3-0.8B-mlx-8bit",
+            paths.REPO_ROOT / "models" / "LightOnOCR-3-4B-mlx-8bit",
+        ]
+        ocr_models = [str(path) for path in default_paths if path.is_dir()] or ["text"]
+    profiles = list(llm_profile) if llm_profile else ["local-llm"]
+
+    models = load_models(paths.configs_root() / "models.yaml")
+    for profile in profiles:
+        validate_model(profile)
+        if not llm_health(models[profile].base_url):
+            raise typer.BadParameter(
+                f"LLM server for {profile} is not running at {models[profile].base_url}. "
+                f"Start it with: uv run lab serve --model {profile}"
+            )
+
+    options = {
+        "data_root": resolved_root,
+        "corpus": corpus,
+        "count": count,
+        "random": random_sample,
+        "seed": seed,
+        "sets": [item.strip() for item in sets.split(",") if item.strip()] if sets else None,
+        "pdf_paths": list(pdf) if pdf else None,
+        "ocr_models": ocr_models,
+        "llm_profiles": profiles,
+        "analysis": analyses,
+        "out_dir": out_dir if out_dir is not None else paths.work_root() / "model-check",
+    }
+    run_dir = mc.execute_model_check(options)
+    typer.echo(f"model-check: {run_dir}")
+    typer.echo(f"summary: {run_dir / 'summary.md'}")
+
+
 if __name__ == "__main__":
     app()

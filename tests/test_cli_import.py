@@ -20,6 +20,13 @@ def test_cli_import_restored():
     importlib.reload(lab.cli)
 
 
+def test_model_check_command_is_registered():
+    result = CliRunner().invoke(lab.cli.app, ["model-check", "--help"])
+    assert result.exit_code == 0
+    assert "--corpus" in result.output
+    assert "--save-ocr" not in result.output
+
+
 def _data_root(tmp_path):
     data_root = tmp_path / "data"
     set_dir = data_root / "dane" / "przyklad_01"

@@ -15,8 +15,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import jiwer
-
 from lab import paths
 from lab.eval.metrics import evaluate_run, write_metrics
 from o2jcore.spec.loader import load_all_classes
@@ -154,6 +152,8 @@ def _ocr_proxy(case: DocumentCase, texts: list[str]) -> dict[str, Any]:
     hypothesis = _normalize("\n\n".join(texts))
     if not reference:
         return {"cer": "N/A", "wer": "N/A"}
+    import jiwer
+
     return {
         "cer": round(float(jiwer.cer(reference, hypothesis)), 4),
         "wer": round(float(jiwer.wer(reference, hypothesis)), 4),
@@ -404,3 +404,99 @@ def write_summary(run_dir: Path, results: list[dict[str, Any]]) -> None:
             f"{row['fuzzy_f1_skip']:.4f} | {row['ocr_proxy']['cer_mean']} | {speed} |"
         )
     (run_dir / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _jsonable(options: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: str(value) if isinstance(value, Path) else value
+        for key, value in options.items()
+    }
+
+
+def execute_model_check(options: dict[str, Any]) -> Path:
+    """Run every requested combo and return the run directory."""
+    data_root = Path(options["data_root"])
+    cases = select_documents(
+        data_root,
+        corpus=options["corpus"],
+        count=options["count"],
+        random_sample=options["random"],
+        seed=options["seed"],
+        sets=options.get("sets"),
+        pdf_paths=options.get("pdf_paths"),
+    )
+    if not cases:
+        raise ValueError("no documents matched the selection")
+
+    analyses = options["analysis"]
+    ocr_models = options["ocr_models"]
+    llm_profiles = options["llm_profiles"]
+    run_dir = Path(options["out_dir"]) / f"{time.strftime('%Y%m%dT%H%M%S')}-{options['seed']}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "config.json").write_text(
+        json.dumps(_jsonable(options), ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    specs = _specs()
+    results: list[dict[str, Any]] = []
+
+    for analysis in analyses:
+        ocr_values = ["text"] if analysis == "llm" else ocr_models
+        llm_values: list[str | None] = (
+            [None] if analysis == "ocr" else list(llm_profiles)
+        )
+        for ocr_model in ocr_values:
+            for llm_profile in llm_values:
+                ocr_tag = "text" if ocr_model == "text" else Path(ocr_model).name
+                llm_tag = "none" if llm_profile is None else llm_profile
+                combo_dir = run_dir / analysis / ocr_tag / llm_tag
+                combo_dir.mkdir(parents=True, exist_ok=True)
+
+                from local_ai.app import MlxBackend
+                from ocr_api.llm_processor import get_processor
+
+                backend = None if ocr_model == "text" or analysis == "llm" else MlxBackend(ocr_model)
+                processor = None if analysis == "ocr" else get_processor(llm_profile)
+
+                rows: list[dict[str, Any]] = []
+                for case in cases:
+                    row = run_case(
+                        case,
+                        ocr_model=ocr_model,
+                        llm_profile=llm_profile,
+                        analysis=analysis,
+                        combo_dir=combo_dir,
+                        backend=backend,
+                        processor=processor,
+                    )
+                    if row.get("status") != "N/A":
+                        rows.append(
+                            {
+                                "set_id": row["set_id"],
+                                "status": row["status"],
+                                "timings": row["timings"],
+                                "ocr_proxy": row["ocr_proxy"],
+                            }
+                        )
+                (combo_dir / "timings.json").write_text(
+                    json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8"
+                )
+
+                scored_cases = (
+                    [case for case in cases if case.has_text_layer]
+                    if analysis == "llm"
+                    else cases
+                )
+                set_ids = sorted({case.set_id for case in scored_cases})
+                score = score_combo(scored_cases, combo_dir, specs, set_ids)
+                results.append(
+                    {
+                        "analysis": analysis,
+                        "ocr_model": ocr_model,
+                        "llm_profile": llm_tag,
+                        "combo_dir": str(combo_dir.relative_to(run_dir)),
+                        **score,
+                    }
+                )
+
+    write_summary(run_dir, results)
+    return run_dir

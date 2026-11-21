@@ -159,6 +159,8 @@ jest zakazane.
 
 ## Dokumentacja
 
+- `docs/MODEL_CHECK.md` — jak uruchamiać `lab model-check`, czytać raporty i
+  diagnozować, czy problem leży w OCR czy w LLM.
 - `AI/PLAN.md` — oryginalny plan badawczy (silniki OCR, modele, warianty
   pipeline'u, metryki F1).
 - Plan wykonawczy z korektami do `AI/PLAN.md` (zweryfikowane fakty o danych,
