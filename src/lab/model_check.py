@@ -36,6 +36,7 @@ def configure_logging(verbose: bool = False) -> None:
     if not any(getattr(h, "_model_check", False) for h in logger.handlers):
         handler._model_check = True  # type: ignore[attr-defined]
         logger.addHandler(handler)
+    logger.propagate = False
     logger.setLevel(logging.DEBUG if verbose else logging.INFO)
 
 

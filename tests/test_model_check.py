@@ -163,6 +163,11 @@ def test_scan_llm_probe_is_na(tmp_path):
     assert result["status"] == "N/A"
 
 
+def test_configure_logging_disables_propagation():
+    mc.configure_logging(False)
+    assert mc.logger.propagate is False
+
+
 def test_jsonable_handles_path_lists(tmp_path):
     payload = mc._jsonable(
         {"data_root": tmp_path, "pdf_paths": [tmp_path / "a.pdf", tmp_path / "b.pdf"]}
