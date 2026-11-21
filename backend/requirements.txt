@@ -5,3 +5,9 @@ python-multipart>=0.0.9
 pypdfium2>=4.0
 Pillow>=10.0
 PyYAML>=6.0
+# Warstwa tekstowa PDF-a (WEB_OCR_BACKEND=text) -- bez GPU i bez wag modelu.
+pdfplumber>=0.11
+# Pipeline lab.llm uruchamiany przez OCR_LLM_PROCESSOR.
+jinja2>=3.1
+rapidfuzz>=3.0
+openai>=1.40

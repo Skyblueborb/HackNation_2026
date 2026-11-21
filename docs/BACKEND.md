@@ -2,28 +2,65 @@
 
 ## Jak uruchomić
 
-**Lokalnie (dev):**
+**Najszybciej — cały stos jednym poleceniem (bez GPU):**
 ```bash
-python -m venv .venv && .venv/bin/pip install -r backend/requirements.txt
-PYTHONPATH=src:. O2J_DB_PATH=work/o2j.db .venv/bin/uvicorn backend.main:app --port 8000
+cp .env.example .env          # opcjonalne; skrypt ma sensowne domyślne wartości
+bash scripts/dev-up.sh        # llama-server + FastAPI :8000 + Vite :3000
+bash scripts/dev-up.sh --no-llm   # bez LLM: /api/analyze zwróci sam tekst
+```
+Ctrl-C zatrzymuje wszystko, co skrypt wystartował.
+
+**Ręcznie (samo API):**
+```bash
+uv sync --extra serve
+API_KEY=dev-key WEB_OCR_BACKEND=text O2J_DB_PATH=work/o2j.db \
+  PYTHONPATH=src:. uv run --extra serve uvicorn backend.main:app --port 8000
 ```
 
-**Docker (docelowo, baza po stronie serwera):**
+**Docker (baza po stronie serwera):**
 ```bash
-docker compose up --build
+cp .env.example .env          # ustaw API_TOKEN i API_KEY
+docker compose up --build     # API :8000, frontend :3000
 ```
-Plik `.db` żyje w named volume `o2j-data` pod `/data/o2j.db` — nie w repo.
-Skopiuj `.env.example` do `.env` i ustaw `API_TOKEN`, aby zabezpieczyć API.
+Plik `.db` żyje w named volume `o2j-data` pod `/data/o2j.db` — nie w repo
+i nie w obrazie.
 
-Frontend: `cd frontend && npm run dev` (port 3000, proxy `/api` → 8000).
+Frontend osobno (dev): `cd frontend && npm install && npm run dev`
+(port 3000, proxy `/api` → 8000).
 
-`/api/analyze` wymaga `python-multipart` (jest w `backend/requirements.txt`).
-Backend OCR wybiera `WEB_OCR_BACKEND=cuda` (domyślnie, `ocr_api.backends.CudaBackend`)
-albo `WEB_OCR_BACKEND=mlx` (`local_ai.app.MlxBackend`). Opcjonalny LLM ładuje
-`OCR_LLM_PROCESSOR=module.path:attribute` przez `ocr_common.load_llm_processor`;
-gdy go nie ma, wynikiem jest `{"raw_text": ...}`. Backend `cuda` wymaga dodatkowych
-zależności z grupy `gpu` (`torch`, `transformers`), a `mlx` z grupy `local`
-(`mlx-vlm`) — nie są w `backend/requirements.txt`.
+## Zmienne środowiskowe
+
+Wszystkie opisane są w `.env.example`. Dwie łatwo pomylić:
+
+* **`API_TOKEN`** — chroni *ten* backend (`X-API-Token` albo `Bearer`).
+  Puste = brak autoryzacji, tylko do lokalnego dev-u.
+* **`API_KEY`** — wymagany przez `ocr_common` (wspólny moduł usług OCR).
+  Backend potrzebuje go, gdy wołane jest `/api/analyze`; bez niego ten
+  endpoint zwraca 500 (`RuntimeError: API_KEY must be set`).
+
+`CORS_ORIGINS` **nie może zostać puste** — puste włącza wildcard `*`.
+
+## Skąd brany jest tekst dokumentu
+
+`WEB_OCR_BACKEND` wybiera źródło tekstu:
+
+| wartość | co robi | zależności |
+|---|---|---|
+| `text` | czyta warstwę tekstową PDF-a (`pdfplumber`) — bez GPU i bez wag modelu | `backend/requirements.txt` |
+| `cuda` | OCR obrazowy na NVIDII (`ocr_api.backends.CudaBackend`) | extra `gpu` (`torch`, `transformers`) |
+| `mlx` | OCR obrazowy na Macu/Metal (`local_ai.app.MlxBackend`) | extra `local` (`mlx-vlm`) + wagi MLX |
+
+Wszystkie 180 dokumentów konkursowych ma warstwę tekstową, a docelowy runtime
+to laptop biurowy bez GPU — dlatego `text` jest właściwą ścieżką lokalnie
+i domyślną w `docker-compose.yml`. OCR obrazowy jest potrzebny tylko dla
+prawdziwych skanów; bramkę „czy trzeba OCR" daje
+`o2jcore.text.pdf_text.has_text_layer()`.
+
+Opcjonalny LLM ładuje `OCR_LLM_PROCESSOR=module.path:attribute` przez
+`ocr_common.load_llm_processor`; gdy go nie ma, `canonical_json` to
+`{"raw_text": ...}`. Profil modelu wybiera `OCR_LLM_MODEL`
+(klucz w `configs/models.yaml`) — serwer tego profilu musi już działać,
+patrz `docs/llm-runtime.md`.
 
 ## Cztery magazyny JSON
 

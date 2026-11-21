@@ -60,9 +60,15 @@ def _strict_validation() -> bool:
 # ---------------------------------------------------------------------------
 
 OCR_BACKEND = os.environ.get("WEB_OCR_BACKEND", "cuda")
-OCR_MODEL = os.environ.get(
-    "WEB_OCR_MODEL", "local-mlx" if OCR_BACKEND == "mlx" else "lightonai/LightOnOCR-3-4B"
-)
+
+# "text" reads the PDF's own text layer (pdfplumber) instead of rendering pages
+# for a vision model: no GPU, no model weights. Correct for every document in
+# the competition set and the default for local development.
+_DEFAULT_OCR_MODEL = {
+    "text": "pdfplumber",
+    "mlx": "local-mlx",
+}.get(OCR_BACKEND, "lightonai/LightOnOCR-3-4B")
+OCR_MODEL = os.environ.get("WEB_OCR_MODEL", _DEFAULT_OCR_MODEL)
 
 
 @lru_cache(maxsize=1)
@@ -80,6 +86,31 @@ def _extractor():
     from ocr_api.backends import CudaBackend
 
     return CudaBackend()
+
+
+async def _run_extraction(data: bytes, filename: str | None) -> dict:
+    """Dispatch to the text-layer reader or to an image-OCR backend."""
+    if OCR_BACKEND == "text":
+        from ocr_common.textlayer import run_textlayer_async
+
+        return await run_textlayer_async(
+            data,
+            backend=OCR_BACKEND,
+            model=OCR_MODEL,
+            processor=_llm_processor(),
+            filename=filename,
+        )
+
+    from ocr_common import run_ocr_async
+
+    return await run_ocr_async(
+        data,
+        _extractor(),
+        backend=OCR_BACKEND,
+        model=OCR_MODEL,
+        processor=_llm_processor(),
+        filename=filename,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -199,18 +230,9 @@ async def analyze(
     doc_class: DocClass = Form("odwolanie"),
     client_doc_id: str | None = Form(None),
 ) -> dict[str, Any]:
-    """OCR skanu PDF, opcjonalny LLM i zapis wyniku w SQLite."""
-    from ocr_common import run_ocr_async
-
+    """Odczyt tekstu z PDF (warstwa tekstowa albo OCR), opcjonalny LLM i zapis w SQLite."""
     data = await file.read()
-    result = await run_ocr_async(
-        data,
-        _extractor(),
-        backend=OCR_BACKEND,
-        model=OCR_MODEL,
-        processor=_llm_processor(),
-        filename=file.filename,
-    )
+    result = await _run_extraction(data, file.filename)
     text_p1_3 = "\n\n".join(page["text"] for page in result["pages"])
     llm = result.get("llm")
     canonical = (
