@@ -2,6 +2,10 @@
 
 This module contains no LLM logic. It only adapts the existing `lab.llm`
 pipeline to the `LLMProcessor` contract in `ocr_common.ports`.
+
+The processor is built lazily: importing this module never loads configs or
+validates `OCR_LLM_MODEL`. Config validation happens at app startup through
+`validate_model()`; inference setup happens on first use through `get_processor()`.
 """
 
 from __future__ import annotations
@@ -21,14 +25,40 @@ from o2jcore.spec.loader import load_all_classes
 from ocr_common.ports import OCRDocument
 
 DEFAULT_MODEL = "qwen3-8b"
+MODELS_PATH = REPO_ROOT / "configs" / "models.yaml"
+
+
+def _resolve_model_id(model_id: str | None) -> str:
+    return model_id or os.environ.get("OCR_LLM_MODEL", DEFAULT_MODEL)
+
+
+def _unknown_model_message(model_id: str, models: dict[str, Any]) -> str:
+    available = ", ".join(sorted(models))
+    return (
+        f"unknown OCR_LLM_MODEL profile: {model_id!r}. "
+        f"available profiles: {available}"
+    )
+
+
+def validate_model(model_id: str | None = None) -> None:
+    """Fail fast if the configured model id is not in configs/models.yaml.
+
+    Called from app startup lifespans so a bad profile is reported before the
+    first analyze request. Raises ValueError naming the unknown profile and
+    listing the available keys.
+    """
+    resolved = _resolve_model_id(model_id)
+    models = load_models(MODELS_PATH)
+    if resolved not in models:
+        raise ValueError(_unknown_model_message(resolved, models))
 
 
 class LabLLMProcessor:
     def __init__(self, model_id: str | None = None) -> None:
-        self.model_id = model_id or os.environ.get("OCR_LLM_MODEL", DEFAULT_MODEL)
-        models = load_models(REPO_ROOT / "configs" / "models.yaml")
+        self.model_id = _resolve_model_id(model_id)
+        models = load_models(MODELS_PATH)
         if self.model_id not in models:
-            raise ValueError(f"unknown OCR_LLM_MODEL: {self.model_id}")
+            raise ValueError(_unknown_model_message(self.model_id, models))
         self.client = LLMClient(models[self.model_id])
         self.prompts = PromptSet()
         self.specs = load_all_classes(
@@ -62,5 +92,19 @@ class LabLLMProcessor:
         }
 
 
-# Registry target: OCR_LLM_PROCESSOR=ocr_api.llm_processor:processor
-processor = LabLLMProcessor()
+_processor: LabLLMProcessor | None = None
+
+
+def get_processor() -> LabLLMProcessor:
+    """Return the shared processor, building it on first access."""
+    global _processor
+    if _processor is None:
+        _processor = LabLLMProcessor()
+    return _processor
+
+
+def __getattr__(name: str) -> Any:
+    # Registry target: OCR_LLM_PROCESSOR=ocr_api.llm_processor:processor
+    if name == "processor":
+        return get_processor()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
