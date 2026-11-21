@@ -1,8 +1,6 @@
 import { useState, useRef } from 'react';
 import { extractZipFiles, type ExtractedFile } from './utils/zip';
 
-// --- Typy odpowiadające 1:1 oczekiwane-json ze screenshotów ---
-
 interface OdwolanieKioFields {
   data: string;
   czynnosc_dzien: string;
@@ -85,7 +83,7 @@ interface DocumentSlot {
 }
 
 const CZYNNOSC_POWODY = [
-  { id: '', label: '– Wybierz identyfikator powodu (czynnosc_powod_id) –' },
+  { id: '', label: '-wybierz-' },
   { id: '1', label: '1 - Decyzja o odrzuceniu oferty' },
   { id: '2', label: '2 - Ogłoszenie wyboru oferty' },
   { id: '3', label: '3 - Decyzja o wykluczeniu wykonawcy' },
@@ -113,19 +111,19 @@ export default function App() {
     {
       id: 'odwolanie',
       title: '1. Odwołanie do KIO',
-      categoryLabel: 'Kategorie: OdwolanieKIO, Odwolujacy, Zamawiajacy, ZamowieniePubliczne',
+      categoryLabel: 'Odwołanie',
       defaultFilename: 'odwolanie.pdf',
     },
     {
       id: 'pelnomocnictwo',
       title: '2. Pełnomocnictwo',
-      categoryLabel: 'Kategorie: mocodawca.data, mocodawca.podpisujacy, pelnomocnicy',
+      categoryLabel: 'Pełnomocnictwo',
       defaultFilename: 'pelnomocnictwo.pdf',
     },
     {
       id: 'przelew',
       title: '3. Potwierdzenie przelewu',
-      categoryLabel: 'Kategoria: przelew_bankowy',
+      categoryLabel: 'Przelew',
       defaultFilename: 'przelew.pdf',
     },
   ]);
@@ -183,7 +181,7 @@ export default function App() {
     przelew_bankowy: {
       data_operacji: '',
       kwota: '',
-      na_rachunek: '60101010100081362231000000',
+      na_rachunek: '60 1010 1010 0081 3622 3100 0000',
       numer_transakcji: '',
       tytul: '',
       z_rachunku: '',
@@ -222,8 +220,8 @@ export default function App() {
     if (currentDocIndex === 0) {
       setOdwolanieData({
         OdwolanieKIO: {
-          data: '2025-10-13',
-          czynnosc_dzien: '2025-10-01',
+          data: '13.10.2025',
+          czynnosc_dzien: '01.10.2025',
           czynnosc_powod_id: '4',
           czynnosc_opis: 'Publikacja specyfikacji warunków zamówienia (SWZ)',
           miejscowosc: 'Pruszków',
@@ -270,16 +268,16 @@ export default function App() {
     } else {
       setPrzelewData({
         przelew_bankowy: {
-          data_operacji: '2025-10-09',
+          data_operacji: '09.10.2025',
           kwota: '10000.00',
-          na_rachunek: '60101010100081362231000000',
+          na_rachunek: '60 1010 1010 0081 3622 3100 0000',
           numer_transakcji: '',
           tytul: 'WPIS OD ODW., ZAM: ZESPÓŁ SZKÓŁ CENTRUM KSZTAŁCENIA ROLNICZEGO IM. KEN W HENRYKOWIE, ZSCKR/822/2025, BUDOWA DR. POŻAR.',
-          z_rachunku: '508020546000005888744244',
+          z_rachunku: '50 8020 5460 0000 5888 7442 44',
         },
       });
     }
-    setSaveNotification(`Wczytano wzorcowe dane dla: ${docSlots[currentDocIndex].title}`);
+    setSaveNotification(`Wstawiono dane dla: ${docSlots[currentDocIndex].title}`);
     setTimeout(() => setSaveNotification(null), 3000);
   };
 
@@ -298,7 +296,7 @@ export default function App() {
       });
     } else {
       setPrzelewData({
-        przelew_bankowy: { data_operacji: '', kwota: '', na_rachunek: '60101010100081362231000000', numer_transakcji: '', tytul: '', z_rachunku: '' },
+        przelew_bankowy: { data_operacji: '', kwota: '', na_rachunek: '60 1010 1010 0081 3622 3100 0000', numer_transakcji: '', tytul: '', z_rachunku: '' },
       });
     }
   };
@@ -381,8 +379,8 @@ export default function App() {
   };
 
   const handleSaveData = () => {
-    setSaveNotification(`Zapisano zmiany w kategorii dokumentu: ${docSlots[currentDocIndex].title}`);
-    setTimeout(() => setSaveNotification(null), 3500);
+    setSaveNotification(`Zapisano dane dla: ${docSlots[currentDocIndex].title}`);
+    setTimeout(() => setSaveNotification(null), 3000);
   };
 
   // Generowanie kanonicznego JSON zgodnego 1:1 z oczekiwane-json
@@ -536,8 +534,7 @@ export default function App() {
 
             <p className="service-description">
               Prześlij dokumentację sprawy odwoławczej w formacie .zip. System automatycznie rozpozna rodzaj każdego
-              pisma, wyodrębni kluczowe informacje procesowe do ustrukturyzowanych kategorii i umożliwi ich
-              weryfikację oraz poprawę przed wygenerowaniem kanonicznego modelu danych.
+              pisma, wyodrębni kluczowe informacje procesowe i umożliwi ich prostą weryfikację.
             </p>
 
             <section className="upload-section" aria-label="Przesyłanie dokumentacji">
@@ -653,7 +650,7 @@ export default function App() {
             </section>
 
             <div className="gov-info-note">
-              <strong>Informacja o przetwarzaniu:</strong> Archiwum powinno zawierać dokumenty sprawy odwoławczej (odwołanie, pełnomocnictwo oraz potwierdzenie uiszczenia wpisu). Po rozpakowaniu otworzy się widok split-screen z podziałem na kategorie zgodne ze schematem <em>oczekiwane-json</em>.
+              <strong>Informacja o przetwarzaniu:</strong> Archiwum powinno zawierać dokumenty sprawy odwoławczej (odwołanie, pełnomocnictwo oraz potwierdzenie uiszczenia wpisu).
             </div>
           </div>
         )}
@@ -675,7 +672,7 @@ export default function App() {
                     Trwa analiza archiwum {selectedZip?.name}
                   </h2>
                   <p style={{ margin: 0, fontSize: '0.9375rem', color: 'var(--gov-text-muted)' }}>
-                    Proszę czekać, system przetwarza zestaw pism procesowych...
+                    Proszę czekać, system przygotowuje dane...
                   </p>
                 </div>
               </div>
@@ -695,11 +692,11 @@ export default function App() {
                 </div>
                 <div className={`gov-step-item ${loadingStep > 3 ? 'done' : loadingStep === 3 ? 'active' : ''}`}>
                   <span>{loadingStep > 3 ? '✓' : '•'}</span>
-                  <span>3. Walidacja sum kontrolnych (NIP, REGON, NRB) i kategoryzacja pól</span>
+                  <span>3. Walidacja sum kontrolnych (NIP, REGON, NRB)</span>
                 </div>
                 <div className={`gov-step-item ${loadingStep === 4 ? 'done' : ''}`}>
                   <span>{loadingStep === 4 ? '✓' : '•'}</span>
-                  <span>4. Przygotowanie danych do panelu edycji i weryfikacji (Split-View)</span>
+                  <span>4. Przygotowanie danych do panelu weryfikacji</span>
                 </div>
               </div>
             </div>
@@ -707,15 +704,15 @@ export default function App() {
         )}
 
         {/* ======================================================== */}
-        {/* WIDOK 3: SPLIT-SCREEN (LEWA: PDF, PRAWA: KATEGORIE DANYCH) */}
+        {/* WIDOK 3: SPLIT-SCREEN (CZYSTY, ESTETYCZNY DLA LUDZI)     */}
         {/* ======================================================== */}
         {stage === 'splitscreen' && (
           <div className="gov-container-wide">
             {/* Pasek nawigacyjny i przełącznik 3 plików */}
             <div className="gov-doc-nav-bar">
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-                <span style={{ fontWeight: 900, fontSize: '1rem', color: 'var(--gov-text)' }}>
-                  Dokumentacja sprawy:
+                <span style={{ fontWeight: 900, fontSize: '0.9375rem', color: 'var(--gov-text)' }}>
+                  Pismo:
                 </span>
                 <div className="gov-tabs-list" role="tablist">
                   {docSlots.map((slot, index) => (
@@ -742,7 +739,7 @@ export default function App() {
                   disabled={currentDocIndex === 0}
                   style={{ opacity: currentDocIndex === 0 ? 0.4 : 1, cursor: currentDocIndex === 0 ? 'not-allowed' : 'pointer' }}
                 >
-                  ← Poprzedni plik
+                  ← Poprzedni
                 </button>
 
                 <button
@@ -764,7 +761,7 @@ export default function App() {
                   }}
                   title="Załaduj inny plik .zip"
                 >
-                  Wgraj inny .zip
+                  Nowy .zip
                 </button>
               </div>
             </div>
@@ -773,13 +770,13 @@ export default function App() {
             {saveNotification && (
               <div
                 style={{
-                  marginTop: '12px',
-                  padding: '12px 18px',
+                  marginTop: '10px',
+                  padding: '10px 16px',
                   backgroundColor: 'var(--gov-success-bg)',
                   borderLeft: '4px solid var(--gov-success)',
                   color: 'var(--gov-success)',
                   fontWeight: 700,
-                  fontSize: '0.9375rem',
+                  fontSize: '0.875rem',
                   borderRadius: '0 3px 3px 0',
                 }}
               >
@@ -793,15 +790,14 @@ export default function App() {
               <div className="gov-split-pane">
                 <div className="gov-pane-header">
                   <h2 className="gov-pane-title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
                       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                       <polyline points="14 2 14 8 20 8"></polyline>
                       <line x1="16" y1="13" x2="8" y2="13"></line>
                       <line x1="16" y1="17" x2="8" y2="17"></line>
-                      <polyline points="10 9 9 9 8 9"></polyline>
                     </svg>
                     <span>
-                      Podgląd PDF: {activeDoc.file?.name || activeDoc.defaultFilename}
+                      Podgląd: {activeDoc.file?.name || activeDoc.defaultFilename}
                     </span>
                   </h2>
                   <span className="gov-badge">Dokument {currentDocIndex + 1} z 3</span>
@@ -827,32 +823,29 @@ export default function App() {
                         padding: '24px',
                       }}
                     >
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="64" height="64" style={{ marginBottom: '16px', opacity: 0.8 }}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="54" height="54" style={{ marginBottom: '14px', opacity: 0.8 }}>
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                         <polyline points="14 2 14 8 20 8"></polyline>
                       </svg>
-                      <h3 style={{ margin: '0 0 8px', fontSize: '1.25rem', color: '#ffffff' }}>
+                      <h3 style={{ margin: '0 0 6px', fontSize: '1.125rem', color: '#ffffff' }}>
                         {activeDoc.title}
                       </h3>
-                      <p style={{ margin: '0 0 16px', maxWidth: '380px', fontSize: '0.9375rem', color: '#8c939d' }}>
-                        W tym oknie wyświetlany jest podgląd pliku <strong>{activeDoc.defaultFilename}</strong>. Po wgraniu archiwum .zip zawierającego pliki PDF, dokument pojawi się w tym oknie.
+                      <p style={{ margin: '0 0 14px', maxWidth: '340px', fontSize: '0.875rem', color: '#8c939d' }}>
+                        W tym oknie wyświetla się plik <strong>{activeDoc.defaultFilename}</strong> z wgranego archiwum .zip.
                       </p>
-                      <span className="gov-badge warning">Oczekiwanie na warstwę PDF / OCR</span>
+                      <span className="gov-badge warning">Podgląd dokumentu</span>
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* --- PRAWA STRONA: KATEGORIE ZE SCHEMATU OCZEKIWANE-JSON --- */}
+              {/* --- PRAWA STRONA: CZYSTE, PROSTE POLA BEZ PRZYTŁACZANIA (IMAGE 2 STYLE) --- */}
               <div className="gov-split-pane">
                 <div className="gov-pane-header">
                   <div>
                     <h2 className="gov-pane-title">
-                      Kategorie danych: {activeDoc.title}
+                      {activeDoc.title}
                     </h2>
-                    <p style={{ margin: '2px 0 0', fontSize: '0.8125rem', color: 'var(--gov-text-muted)' }}>
-                      Struktura zgodna z <code>oczekiwane-json</code>. Pola są edytowalne przez osobę sprawdzającą.
-                    </p>
                   </div>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button
@@ -860,16 +853,14 @@ export default function App() {
                       className="gov-btn-secondary"
                       onClick={fillSampleGoldData}
                       title="Wstaw przykładowe dane z wzorca"
-                      style={{ fontSize: '0.8125rem', padding: '6px 10px' }}
                     >
-                      Wstaw dane wzorcowe
+                      Wstaw przykład
                     </button>
                     <button
                       type="button"
                       className="gov-btn-secondary"
                       onClick={clearCurrentData}
                       title="Wyczyść wszystkie pola"
-                      style={{ fontSize: '0.8125rem', padding: '6px 10px' }}
                     >
                       Wyczyść
                     </button>
@@ -877,7 +868,6 @@ export default function App() {
                       type="button"
                       className="gov-btn-secondary"
                       onClick={() => setShowJsonModal(true)}
-                      style={{ fontSize: '0.8125rem', padding: '6px 12px' }}
                     >
                       Podgląd JSON
                     </button>
@@ -886,68 +876,58 @@ export default function App() {
 
                 <div className="gov-form-wrapper">
                   {/* ======================================================== */}
-                  {/* KATEGORIE DLA: ODWOŁANIE DO KIO (odwolanie.json)         */}
+                  {/* DOKUMENT 1: ODWOŁANIE DO KIO                             */}
                   {/* ======================================================== */}
                   {currentDocIndex === 0 && (
                     <div>
-                      {/* Kategoria 1: "OdwolanieKIO" */}
-                      <div className="gov-form-section">
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-                          <h3 className="gov-section-title" style={{ margin: 0 }}>
-                            Kategoria: <code>"OdwolanieKIO"</code>
+                      {/* Sekcja: OdwolanieKIO */}
+                      <div className="clean-form-section">
+                        <div className="clean-section-header">
+                          <h3 className="clean-section-title">
+                            Kategoria: "OdwolanieKIO"
                           </h3>
                           <span className="gov-badge">Obiekt główny</span>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                          <div className="gov-form-group">
-                            <label className="gov-label" htmlFor="odw_data">
-                              <code>data</code> (Data z nagłówka pierwszej strony)
-                            </label>
-                            <input
-                              id="odw_data"
-                              type="text"
-                              className="gov-input"
-                              placeholder="Format: 'DD.MM.RRRR' lub 'YYYY-MM-DD'"
-                              value={odwolanieData.OdwolanieKIO.data}
-                              onChange={(e) =>
-                                setOdwolanieData({
-                                  ...odwolanieData,
-                                  OdwolanieKIO: { ...odwolanieData.OdwolanieKIO, data: e.target.value },
-                                })
-                              }
-                            />
-                            <span className="gov-hint">np. 2025-10-13</span>
-                          </div>
-
-                          <div className="gov-form-group">
-                            <label className="gov-label" htmlFor="odw_miejscowosc">
-                              <code>miejscowosc</code> (Miejscowość z nagłówka)
-                            </label>
-                            <input
-                              id="odw_miejscowosc"
-                              type="text"
-                              className="gov-input"
-                              placeholder="z linii typu: 'X, dnia ...' albo 'X DD.MM.RRRR'"
-                              value={odwolanieData.OdwolanieKIO.miejscowosc}
-                              onChange={(e) =>
-                                setOdwolanieData({
-                                  ...odwolanieData,
-                                  OdwolanieKIO: { ...odwolanieData.OdwolanieKIO, miejscowosc: e.target.value },
-                                })
-                              }
-                            />
-                            <span className="gov-hint">np. Pruszków</span>
-                          </div>
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="odw_data">Data:</label>
+                          <input
+                            id="odw_data"
+                            type="text"
+                            className="clean-input"
+                            placeholder="dd.mm.rrrr"
+                            value={odwolanieData.OdwolanieKIO.data}
+                            onChange={(e) =>
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                OdwolanieKIO: { ...odwolanieData.OdwolanieKIO, data: e.target.value },
+                              })
+                            }
+                          />
                         </div>
 
-                        <div className="gov-form-group">
-                          <label className="gov-label" htmlFor="odw_powod_id">
-                            <code>czynnosc_powod_id</code> (Liczba całkowita 1-11 – pierwszy zarzut)
-                          </label>
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="odw_miejscowosc">Miejscowość:</label>
+                          <input
+                            id="odw_miejscowosc"
+                            type="text"
+                            className="clean-input"
+                            placeholder="np. Warszawa"
+                            value={odwolanieData.OdwolanieKIO.miejscowosc}
+                            onChange={(e) =>
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                OdwolanieKIO: { ...odwolanieData.OdwolanieKIO, miejscowosc: e.target.value },
+                              })
+                            }
+                          />
+                        </div>
+
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="odw_powod">Powód:</label>
                           <select
-                            id="odw_powod_id"
-                            className="gov-select"
+                            id="odw_powod"
+                            className="clean-select"
                             value={odwolanieData.OdwolanieKIO.czynnosc_powod_id}
                             onChange={(e) => {
                               const sel = CZYNNOSC_POWODY.find((p) => p.id === e.target.value);
@@ -956,7 +936,7 @@ export default function App() {
                                 OdwolanieKIO: {
                                   ...odwolanieData.OdwolanieKIO,
                                   czynnosc_powod_id: e.target.value,
-                                  czynnosc_opis: sel ? sel.label.replace(/^\d+ - /, '') : '',
+                                  czynnosc_opis: sel && sel.id ? sel.label.replace(/^\d+ - /, '') : '',
                                 },
                               });
                             }}
@@ -969,34 +949,13 @@ export default function App() {
                           </select>
                         </div>
 
-                        <div className="gov-form-group">
-                          <label className="gov-label" htmlFor="odw_czynnosc_opis">
-                            <code>czynnosc_opis</code> (Kanoniczny opis zaskarżonej czynności zgodny 1:1 z czynnosc_powod_id)
-                          </label>
-                          <input
-                            id="odw_czynnosc_opis"
-                            type="text"
-                            className="gov-input"
-                            placeholder="Kanoniczny opis zaskarżonej czynności"
-                            value={odwolanieData.OdwolanieKIO.czynnosc_opis}
-                            onChange={(e) =>
-                              setOdwolanieData({
-                                ...odwolanieData,
-                                OdwolanieKIO: { ...odwolanieData.OdwolanieKIO, czynnosc_opis: e.target.value },
-                              })
-                            }
-                          />
-                        </div>
-
-                        <div className="gov-form-group">
-                          <label className="gov-label" htmlFor="odw_czynnosc_dzien">
-                            <code>czynnosc_dzien</code> (Data czynności uruchamiającej bieg terminu - ISO)
-                          </label>
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="odw_czynnosc_dzien">Data czynności:</label>
                           <input
                             id="odw_czynnosc_dzien"
                             type="text"
-                            className="gov-input"
-                            placeholder="np. 2025-10-01"
+                            className="clean-input"
+                            placeholder="dd.mm.rrrr"
                             value={odwolanieData.OdwolanieKIO.czynnosc_dzien}
                             onChange={(e) =>
                               setOdwolanieData({
@@ -1008,24 +967,22 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* Kategoria 2: "Odwolujacy" */}
-                      <div className="gov-form-section">
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-                          <h3 className="gov-section-title" style={{ margin: 0 }}>
-                            Kategoria: <code>"Odwolujacy[]"</code>
+                      {/* Sekcja: Odwolujacy */}
+                      <div className="clean-form-section">
+                        <div className="clean-section-header">
+                          <h3 className="clean-section-title">
+                            Kategoria: "Odwolujacy"
                           </h3>
-                          <span className="gov-badge">Tablica podmiotów wnoszących</span>
+                          <span className="gov-badge">Podmiot wnoszący</span>
                         </div>
 
-                        <div className="gov-form-group">
-                          <label className="gov-label" htmlFor="odw_nazwa">
-                            <code>nazwa</code> (Pełna nazwa podmiotu / Lidera konsorcjum)
-                          </label>
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="odw_nazwa">Nazwa:</label>
                           <input
                             id="odw_nazwa"
                             type="text"
-                            className="gov-input"
-                            placeholder="np. STRABAG Sp. z o.o."
+                            className="clean-input"
+                            placeholder="Pełna nazwa wykonawcy"
                             value={odwolanieData.Odwolujacy.nazwa}
                             onChange={(e) =>
                               setOdwolanieData({
@@ -1036,72 +993,62 @@ export default function App() {
                           />
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px' }}>
-                          <div className="gov-form-group">
-                            <label className="gov-label" htmlFor="odw_krs">
-                              <code>krs</code>
-                            </label>
-                            <input
-                              id="odw_krs"
-                              type="text"
-                              className="gov-input"
-                              placeholder="np. 0000054580"
-                              value={odwolanieData.Odwolujacy.krs}
-                              onChange={(e) =>
-                                setOdwolanieData({
-                                  ...odwolanieData,
-                                  Odwolujacy: { ...odwolanieData.Odwolujacy, krs: e.target.value },
-                                })
-                              }
-                            />
-                          </div>
-
-                          <div className="gov-form-group">
-                            <label className="gov-label" htmlFor="odw_nip">
-                              <code>nip</code>
-                            </label>
-                            <input
-                              id="odw_nip"
-                              type="text"
-                              className="gov-input"
-                              placeholder="NIP (jeśli występuje)"
-                              value={odwolanieData.Odwolujacy.nip}
-                              onChange={(e) =>
-                                setOdwolanieData({
-                                  ...odwolanieData,
-                                  Odwolujacy: { ...odwolanieData.Odwolujacy, nip: e.target.value },
-                                })
-                              }
-                            />
-                          </div>
-
-                          <div className="gov-form-group">
-                            <label className="gov-label" htmlFor="odw_regon">
-                              <code>regon</code>
-                            </label>
-                            <input
-                              id="odw_regon"
-                              type="text"
-                              className="gov-input"
-                              placeholder="REGON (jeśli występuje)"
-                              value={odwolanieData.Odwolujacy.regon}
-                              onChange={(e) =>
-                                setOdwolanieData({
-                                  ...odwolanieData,
-                                  Odwolujacy: { ...odwolanieData.Odwolujacy, regon: e.target.value },
-                                })
-                              }
-                            />
-                          </div>
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="odw_nip">NIP:</label>
+                          <input
+                            id="odw_nip"
+                            type="text"
+                            className="clean-input"
+                            placeholder="10 cyfr"
+                            value={odwolanieData.Odwolujacy.nip}
+                            onChange={(e) =>
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                Odwolujacy: { ...odwolanieData.Odwolujacy, nip: e.target.value },
+                              })
+                            }
+                          />
                         </div>
 
-                        <div className="gov-form-group">
-                          <label className="gov-label" htmlFor="odw_przez_pelnomocnika">
-                            <code>przez-pelnomocnika</code> (1 - tak, 0 - nie)
-                          </label>
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="odw_krs">KRS:</label>
+                          <input
+                            id="odw_krs"
+                            type="text"
+                            className="clean-input"
+                            placeholder="Numer KRS"
+                            value={odwolanieData.Odwolujacy.krs}
+                            onChange={(e) =>
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                Odwolujacy: { ...odwolanieData.Odwolujacy, krs: e.target.value },
+                              })
+                            }
+                          />
+                        </div>
+
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="odw_regon">REGON:</label>
+                          <input
+                            id="odw_regon"
+                            type="text"
+                            className="clean-input"
+                            placeholder="Numer REGON"
+                            value={odwolanieData.Odwolujacy.regon}
+                            onChange={(e) =>
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                Odwolujacy: { ...odwolanieData.Odwolujacy, regon: e.target.value },
+                              })
+                            }
+                          />
+                        </div>
+
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="odw_pelnomocnik_check">Przez pełnomocnika:</label>
                           <select
-                            id="odw_przez_pelnomocnika"
-                            className="gov-select"
+                            id="odw_pelnomocnik_check"
+                            className="clean-select"
                             value={odwolanieData.Odwolujacy.przez_pelnomocnika}
                             onChange={(e) =>
                               setOdwolanieData({
@@ -1110,27 +1057,20 @@ export default function App() {
                               })
                             }
                           >
-                            <option value="1">1 - Tak (działa przez pełnomocnika)</option>
-                            <option value="0">0 - Nie (działa samodzielnie)</option>
+                            <option value="1">Tak (1)</option>
+                            <option value="0">Nie (0)</option>
                           </select>
                         </div>
 
-                        {/* Podkategoria: pelnomocnik */}
-                        <div style={{ backgroundColor: 'var(--gov-bg)', border: '1px solid var(--gov-border-light)', borderRadius: '3px', padding: '16px', marginTop: '12px' }}>
-                          <span style={{ fontSize: '0.875rem', fontWeight: 900, color: 'var(--gov-text)', display: 'block', marginBottom: '12px' }}>
-                            ↳ Obiekt podrzędny: <code>"pelnomocnik"</code>
-                          </span>
-
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-                            <div className="gov-form-group">
-                              <label className="gov-label" htmlFor="odw_pel_imie">
-                                <code>imie_nazwisko</code>
-                              </label>
+                        {odwolanieData.Odwolujacy.przez_pelnomocnika === '1' && (
+                          <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed var(--gov-border-light)' }}>
+                            <div className="clean-row">
+                              <label className="clean-label" htmlFor="odw_pel_imie">Pełnomocnik:</label>
                               <input
                                 id="odw_pel_imie"
                                 type="text"
-                                className="gov-input"
-                                placeholder="np. Marcel Kielce"
+                                className="clean-input"
+                                placeholder="Imię i nazwisko"
                                 value={odwolanieData.Odwolujacy.pelnomocnik_imie_nazwisko}
                                 onChange={(e) =>
                                   setOdwolanieData({
@@ -1141,15 +1081,13 @@ export default function App() {
                               />
                             </div>
 
-                            <div className="gov-form-group">
-                              <label className="gov-label" htmlFor="odw_pel_nazwa">
-                                <code>nazwa</code> (Podmiot zatrudniający)
-                              </label>
+                            <div className="clean-row">
+                              <label className="clean-label" htmlFor="odw_pel_nazwa">Kancelaria:</label>
                               <input
                                 id="odw_pel_nazwa"
                                 type="text"
-                                className="gov-input"
-                                placeholder="np. Kancelaria Radców Prawnych"
+                                className="clean-input"
+                                placeholder="Nazwa kancelarii"
                                 value={odwolanieData.Odwolujacy.pelnomocnik_nazwa}
                                 onChange={(e) =>
                                   setOdwolanieData({
@@ -1159,47 +1097,43 @@ export default function App() {
                                 }
                               />
                             </div>
-                          </div>
 
-                          <div className="gov-form-group" style={{ marginBottom: 0 }}>
-                            <label className="gov-label" htmlFor="odw_pel_mail">
-                              <code>mail</code> (Adres e-mail kontaktowy)
-                            </label>
-                            <input
-                              id="odw_pel_mail"
-                              type="email"
-                              className="gov-input"
-                              placeholder="np. info@prawnik.sy"
-                              value={odwolanieData.Odwolujacy.pelnomocnik_mail}
-                              onChange={(e) =>
-                                setOdwolanieData({
-                                  ...odwolanieData,
-                                  Odwolujacy: { ...odwolanieData.Odwolujacy, pelnomocnik_mail: e.target.value },
-                                })
-                              }
-                            />
+                            <div className="clean-row">
+                              <label className="clean-label" htmlFor="odw_pel_mail">E-mail:</label>
+                              <input
+                                id="odw_pel_mail"
+                                type="email"
+                                className="clean-input"
+                                placeholder="Adres e-mail"
+                                value={odwolanieData.Odwolujacy.pelnomocnik_mail}
+                                onChange={(e) =>
+                                  setOdwolanieData({
+                                    ...odwolanieData,
+                                    Odwolujacy: { ...odwolanieData.Odwolujacy, pelnomocnik_mail: e.target.value },
+                                  })
+                                }
+                              />
+                            </div>
                           </div>
-                        </div>
+                        )}
                       </div>
 
-                      {/* Kategoria 3: "Zamawiajacy" */}
-                      <div className="gov-form-section">
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-                          <h3 className="gov-section-title" style={{ margin: 0 }}>
-                            Kategoria: <code>"Zamawiajacy[]"</code>
+                      {/* Sekcja: Zamawiajacy */}
+                      <div className="clean-form-section">
+                        <div className="clean-section-header">
+                          <h3 className="clean-section-title">
+                            Kategoria: "Zamawiajacy"
                           </h3>
-                          <span className="gov-badge">Tablica zamawiających</span>
+                          <span className="gov-badge">Instytucja zamawiająca</span>
                         </div>
 
-                        <div className="gov-form-group">
-                          <label className="gov-label" htmlFor="zam_nazwa">
-                            <code>nazwa</code> (Pełna nazwa Zamawiającego)
-                          </label>
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="zam_nazwa">Nazwa:</label>
                           <input
                             id="zam_nazwa"
                             type="text"
-                            className="gov-input"
-                            placeholder="np. Filharmonia Pomorska im. Ignacego Jana Paderewskiego"
+                            className="clean-input"
+                            placeholder="Pełna nazwa zamawiającego"
                             value={odwolanieData.Zamawiajacy.nazwa}
                             onChange={(e) =>
                               setOdwolanieData({
@@ -1210,72 +1144,62 @@ export default function App() {
                           />
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px' }}>
-                          <div className="gov-form-group">
-                            <label className="gov-label" htmlFor="zam_nip">
-                              <code>nip</code>
-                            </label>
-                            <input
-                              id="zam_nip"
-                              type="text"
-                              className="gov-input"
-                              placeholder="np. 5540240549"
-                              value={odwolanieData.Zamawiajacy.nip}
-                              onChange={(e) =>
-                                setOdwolanieData({
-                                  ...odwolanieData,
-                                  Zamawiajacy: { ...odwolanieData.Zamawiajacy, nip: e.target.value },
-                                })
-                              }
-                            />
-                          </div>
-
-                          <div className="gov-form-group">
-                            <label className="gov-label" htmlFor="zam_regon">
-                              <code>regon</code>
-                            </label>
-                            <input
-                              id="zam_regon"
-                              type="text"
-                              className="gov-input"
-                              placeholder="np. 000279077"
-                              value={odwolanieData.Zamawiajacy.regon}
-                              onChange={(e) =>
-                                setOdwolanieData({
-                                  ...odwolanieData,
-                                  Zamawiajacy: { ...odwolanieData.Zamawiajacy, regon: e.target.value },
-                                })
-                              }
-                            />
-                          </div>
-
-                          <div className="gov-form-group">
-                            <label className="gov-label" htmlFor="zam_krs">
-                              <code>krs</code>
-                            </label>
-                            <input
-                              id="zam_krs"
-                              type="text"
-                              className="gov-input"
-                              placeholder="KRS Zamawiającego"
-                              value={odwolanieData.Zamawiajacy.krs}
-                              onChange={(e) =>
-                                setOdwolanieData({
-                                  ...odwolanieData,
-                                  Zamawiajacy: { ...odwolanieData.Zamawiajacy, krs: e.target.value },
-                                })
-                              }
-                            />
-                          </div>
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="zam_nip">NIP:</label>
+                          <input
+                            id="zam_nip"
+                            type="text"
+                            className="clean-input"
+                            placeholder="NIP zamawiającego"
+                            value={odwolanieData.Zamawiajacy.nip}
+                            onChange={(e) =>
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                Zamawiajacy: { ...odwolanieData.Zamawiajacy, nip: e.target.value },
+                              })
+                            }
+                          />
                         </div>
 
-                        <div className="gov-form-group">
-                          <label className="gov-label" htmlFor="zam_prowadzacy">
-                            <code>prowadzacy_postepowanie</code> (null - brak info, 1 - lider, 0 - nie lider)
-                          </label>
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="zam_regon">REGON:</label>
+                          <input
+                            id="zam_regon"
+                            type="text"
+                            className="clean-input"
+                            placeholder="REGON"
+                            value={odwolanieData.Zamawiajacy.regon}
+                            onChange={(e) =>
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                Zamawiajacy: { ...odwolanieData.Zamawiajacy, regon: e.target.value },
+                              })
+                            }
+                          />
+                        </div>
+
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="zam_krs">KRS:</label>
+                          <input
+                            id="zam_krs"
+                            type="text"
+                            className="clean-input"
+                            placeholder="Numer KRS (jeśli dotyczy)"
+                            value={odwolanieData.Zamawiajacy.krs}
+                            onChange={(e) =>
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                Zamawiajacy: { ...odwolanieData.Zamawiajacy, krs: e.target.value },
+                              })
+                            }
+                          />
+                        </div>
+
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="zam_prowadzacy">Lider postępowania:</label>
                           <select
                             id="zam_prowadzacy"
-                            className="gov-select"
+                            className="clean-select"
                             value={odwolanieData.Zamawiajacy.prowadzacy_postepowanie}
                             onChange={(e) =>
                               setOdwolanieData({
@@ -1284,99 +1208,29 @@ export default function App() {
                               })
                             }
                           >
-                            <option value="null">null - brak informacji / pojedynczy zamawiający</option>
-                            <option value="1">1 - oznaczony jako prowadzący postępowanie / lider</option>
-                            <option value="0">0 - uczestnik konsorcjum zamawiających (nie lider)</option>
+                            <option value="null">Brak informacji / Pojedynczy</option>
+                            <option value="1">Tak (1)</option>
+                            <option value="0">Nie (0)</option>
                           </select>
                         </div>
                       </div>
 
-                      {/* Kategoria 4: "ZamowieniePubliczne" */}
-                      <div className="gov-form-section">
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-                          <h3 className="gov-section-title" style={{ margin: 0 }}>
-                            Kategoria: <code>"ZamowieniePubliczne"</code>
+                      {/* Sekcja: ZamowieniePubliczne */}
+                      <div className="clean-form-section">
+                        <div className="clean-section-header">
+                          <h3 className="clean-section-title">
+                            Kategoria: "ZamowieniePubliczne"
                           </h3>
-                          <span className="gov-badge">Dane postępowania</span>
+                          <span className="gov-badge">Postępowanie</span>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px' }}>
-                          <div className="gov-form-group">
-                            <label className="gov-label" htmlFor="zam_nr_post">
-                              <code>numer_postepowania</code>
-                            </label>
-                            <input
-                              id="zam_nr_post"
-                              type="text"
-                              className="gov-input"
-                              placeholder="np. ZP.039.2025"
-                              value={odwolanieData.ZamowieniePubliczne.numer_postepowania}
-                              onChange={(e) =>
-                                setOdwolanieData({
-                                  ...odwolanieData,
-                                  ZamowieniePubliczne: {
-                                    ...odwolanieData.ZamowieniePubliczne,
-                                    numer_postepowania: e.target.value,
-                                  },
-                                })
-                              }
-                            />
-                          </div>
-
-                          <div className="gov-form-group">
-                            <label className="gov-label" htmlFor="zam_bzp">
-                              <code>numer_bzp</code>
-                            </label>
-                            <input
-                              id="zam_bzp"
-                              type="text"
-                              className="gov-input"
-                              placeholder="Format: 'YYYY/BZP ########'"
-                              value={odwolanieData.ZamowieniePubliczne.numer_bzp}
-                              onChange={(e) =>
-                                setOdwolanieData({
-                                  ...odwolanieData,
-                                  ZamowieniePubliczne: {
-                                    ...odwolanieData.ZamowieniePubliczne,
-                                    numer_bzp: e.target.value,
-                                  },
-                                })
-                              }
-                            />
-                          </div>
-
-                          <div className="gov-form-group">
-                            <label className="gov-label" htmlFor="zam_ted">
-                              <code>numer_ted</code>
-                            </label>
-                            <input
-                              id="zam_ted"
-                              type="text"
-                              className="gov-input"
-                              placeholder="np. 641651-2025"
-                              value={odwolanieData.ZamowieniePubliczne.numer_ted}
-                              onChange={(e) =>
-                                setOdwolanieData({
-                                  ...odwolanieData,
-                                  ZamowieniePubliczne: {
-                                    ...odwolanieData.ZamowieniePubliczne,
-                                    numer_ted: e.target.value,
-                                  },
-                                })
-                              }
-                            />
-                          </div>
-                        </div>
-
-                        <div className="gov-form-group">
-                          <label className="gov-label" htmlFor="zam_tytul">
-                            <code>tytul</code> (Tytuł zamówienia lub postępowania)
-                          </label>
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="zam_tytul">Tytuł:</label>
                           <textarea
                             id="zam_tytul"
-                            className="gov-textarea"
-                            rows={3}
-                            placeholder="Wpisz pełny tytuł zamówienia..."
+                            className="clean-textarea"
+                            rows={2}
+                            placeholder="Tytuł / przedmiot zamówienia"
                             value={odwolanieData.ZamowieniePubliczne.tytul}
                             onChange={(e) =>
                               setOdwolanieData({
@@ -1389,281 +1243,285 @@ export default function App() {
                             }
                           ></textarea>
                         </div>
+
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="zam_nr_post">Nr postępowania:</label>
+                          <input
+                            id="zam_nr_post"
+                            type="text"
+                            className="clean-input"
+                            placeholder="np. ZP.039.2025"
+                            value={odwolanieData.ZamowieniePubliczne.numer_postepowania}
+                            onChange={(e) =>
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                ZamowieniePubliczne: {
+                                  ...odwolanieData.ZamowieniePubliczne,
+                                  numer_postepowania: e.target.value,
+                                },
+                              })
+                            }
+                          />
+                        </div>
+
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="zam_bzp">Nr BZP:</label>
+                          <input
+                            id="zam_bzp"
+                            type="text"
+                            className="clean-input"
+                            placeholder="np. 2025/BZP 00123456/01"
+                            value={odwolanieData.ZamowieniePubliczne.numer_bzp}
+                            onChange={(e) =>
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                ZamowieniePubliczne: {
+                                  ...odwolanieData.ZamowieniePubliczne,
+                                  numer_bzp: e.target.value,
+                                },
+                              })
+                            }
+                          />
+                        </div>
+
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="zam_ted">Nr TED:</label>
+                          <input
+                            id="zam_ted"
+                            type="text"
+                            className="clean-input"
+                            placeholder="np. 641651-2025"
+                            value={odwolanieData.ZamowieniePubliczne.numer_ted}
+                            onChange={(e) =>
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                ZamowieniePubliczne: {
+                                  ...odwolanieData.ZamowieniePubliczne,
+                                  numer_ted: e.target.value,
+                                },
+                              })
+                            }
+                          />
+                        </div>
                       </div>
                     </div>
                   )}
 
                   {/* ======================================================== */}
-                  {/* KATEGORIE DLA: PEŁNOMOCNICTWO (pelnomocnictwo.json)      */}
+                  {/* DOKUMENT 2: PEŁNOMOCNICTWO                               */}
                   {/* ======================================================== */}
                   {currentDocIndex === 1 && (
                     <div>
-                      {/* Kategoria 1: "mocodawca" */}
-                      <div className="gov-form-section">
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-                          <h3 className="gov-section-title" style={{ margin: 0 }}>
-                            Kategoria: <code>"mocodawca[]"</code>
+                      {/* Sekcja: Mocodawca */}
+                      <div className="clean-form-section">
+                        <div className="clean-section-header">
+                          <h3 className="clean-section-title">
+                            Kategoria: "mocodawca"
                           </h3>
-                          <span className="gov-badge">Podmiot udzielający</span>
+                          <span className="gov-badge">Udzielający</span>
                         </div>
 
-                        {/* Podkategoria: data */}
-                        <div style={{ backgroundColor: 'var(--gov-bg)', border: '1px solid var(--gov-border-light)', borderRadius: '3px', padding: '16px', marginBottom: '16px' }}>
-                          <span style={{ fontSize: '0.875rem', fontWeight: 900, color: 'var(--gov-text)', display: 'block', marginBottom: '12px' }}>
-                            ↳ Obiekt: <code>"data"</code>
-                          </span>
-
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '14px' }}>
-                            <div className="gov-form-group">
-                              <label className="gov-label" htmlFor="moc_typ">
-                                <code>typ</code>
-                              </label>
-                              <select
-                                id="moc_typ"
-                                className="gov-select"
-                                value={pelnomocnictwoData.mocodawca.typ}
-                                onChange={(e) =>
-                                  setPelnomocnictwoData({
-                                    ...pelnomocnictwoData,
-                                    mocodawca: {
-                                      ...pelnomocnictwoData.mocodawca,
-                                      typ: e.target.value as 'osoba_prawna' | 'osoba_fizyczna',
-                                    },
-                                  })
-                                }
-                              >
-                                <option value="osoba_prawna">"osoba_prawna"</option>
-                                <option value="osoba_fizyczna">"osoba_fizyczna"</option>
-                              </select>
-                            </div>
-
-                            <div className="gov-form-group">
-                              <label className="gov-label" htmlFor="moc_nazwa">
-                                <code>nazwa</code> (Pełna nazwa mocodawcy)
-                              </label>
-                              <input
-                                id="moc_nazwa"
-                                type="text"
-                                className="gov-input"
-                                placeholder="np. FAMBUD"
-                                value={pelnomocnictwoData.mocodawca.nazwa}
-                                onChange={(e) =>
-                                  setPelnomocnictwoData({
-                                    ...pelnomocnictwoData,
-                                    mocodawca: { ...pelnomocnictwoData.mocodawca, nazwa: e.target.value },
-                                  })
-                                }
-                              />
-                            </div>
-                          </div>
-
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-                            <div className="gov-form-group">
-                              <label className="gov-label" htmlFor="moc_krs">
-                                <code>krs</code> (Numer KRS osoby prawnej)
-                              </label>
-                              <input
-                                id="moc_krs"
-                                type="text"
-                                className="gov-input"
-                                placeholder="np. 0000244633"
-                                value={pelnomocnictwoData.mocodawca.krs}
-                                onChange={(e) =>
-                                  setPelnomocnictwoData({
-                                    ...pelnomocnictwoData,
-                                    mocodawca: { ...pelnomocnictwoData.mocodawca, krs: e.target.value },
-                                  })
-                                }
-                              />
-                            </div>
-
-                            <div className="gov-form-group">
-                              <label className="gov-label" htmlFor="moc_nip">
-                                <code>nip</code> (Numer NIP mocodawcy)
-                              </label>
-                              <input
-                                id="moc_nip"
-                                type="text"
-                                className="gov-input"
-                                placeholder="np. 8361772283"
-                                value={pelnomocnictwoData.mocodawca.nip}
-                                onChange={(e) =>
-                                  setPelnomocnictwoData({
-                                    ...pelnomocnictwoData,
-                                    mocodawca: { ...pelnomocnictwoData.mocodawca, nip: e.target.value },
-                                  })
-                                }
-                              />
-                            </div>
-                          </div>
-
-                          {pelnomocnictwoData.mocodawca.typ === 'osoba_fizyczna' && (
-                            <div className="gov-form-group" style={{ marginBottom: 0 }}>
-                              <label className="gov-label" htmlFor="moc_imie">
-                                <code>imie_nazwisko</code> (Gdy osoba fizyczna, inaczej null)
-                              </label>
-                              <input
-                                id="moc_imie"
-                                type="text"
-                                className="gov-input"
-                                placeholder="Imię i nazwisko osoby fizycznej..."
-                                value={pelnomocnictwoData.mocodawca.imie_nazwisko}
-                                onChange={(e) =>
-                                  setPelnomocnictwoData({
-                                    ...pelnomocnictwoData,
-                                    mocodawca: { ...pelnomocnictwoData.mocodawca, imie_nazwisko: e.target.value },
-                                  })
-                                }
-                              />
-                            </div>
-                          )}
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="moc_typ">Typ:</label>
+                          <select
+                            id="moc_typ"
+                            className="clean-select"
+                            value={pelnomocnictwoData.mocodawca.typ}
+                            onChange={(e) =>
+                              setPelnomocnictwoData({
+                                ...pelnomocnictwoData,
+                                mocodawca: {
+                                  ...pelnomocnictwoData.mocodawca,
+                                  typ: e.target.value as 'osoba_prawna' | 'osoba_fizyczna',
+                                },
+                              })
+                            }
+                          >
+                            <option value="osoba_prawna">Osoba prawna</option>
+                            <option value="osoba_fizyczna">Osoba fizyczna</option>
+                          </select>
                         </div>
 
-                        {/* Podkategoria: podpisujacy */}
-                        <div style={{ backgroundColor: 'var(--gov-bg)', border: '1px solid var(--gov-border-light)', borderRadius: '3px', padding: '16px' }}>
-                          <span style={{ fontSize: '0.875rem', fontWeight: 900, color: 'var(--gov-text)', display: 'block', marginBottom: '12px' }}>
-                            ↳ Tablica: <code>"podpisujacy[]"</code> (Osoby podpisujące w imieniu mocodawcy)
-                          </span>
-
-                          <div className="gov-form-group" style={{ marginBottom: 0 }}>
-                            <label className="gov-label" htmlFor="moc_podpis">
-                              <code>imie_nazwisko</code>
-                            </label>
-                            <input
-                              id="moc_podpis"
-                              type="text"
-                              className="gov-input"
-                              placeholder="np. Paweł Podolski"
-                              value={pelnomocnictwoData.mocodawca.podpisujacy_imie_nazwisko}
-                              onChange={(e) =>
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="moc_nazwa">Nazwa:</label>
+                          <input
+                            id="moc_nazwa"
+                            type="text"
+                            className="clean-input"
+                            placeholder={pelnomocnictwoData.mocodawca.typ === 'osoba_prawna' ? 'Pełna nazwa mocodawcy' : 'Imię i nazwisko'}
+                            value={pelnomocnictwoData.mocodawca.typ === 'osoba_prawna' ? pelnomocnictwoData.mocodawca.nazwa : pelnomocnictwoData.mocodawca.imie_nazwisko}
+                            onChange={(e) => {
+                              if (pelnomocnictwoData.mocodawca.typ === 'osoba_prawna') {
                                 setPelnomocnictwoData({
                                   ...pelnomocnictwoData,
-                                  mocodawca: {
-                                    ...pelnomocnictwoData.mocodawca,
-                                    podpisujacy_imie_nazwisko: e.target.value,
-                                  },
-                                })
+                                  mocodawca: { ...pelnomocnictwoData.mocodawca, nazwa: e.target.value },
+                                });
+                              } else {
+                                setPelnomocnictwoData({
+                                  ...pelnomocnictwoData,
+                                  mocodawca: { ...pelnomocnictwoData.mocodawca, imie_nazwisko: e.target.value },
+                                });
                               }
-                            />
-                          </div>
+                            }}
+                          />
+                        </div>
+
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="moc_nip">NIP:</label>
+                          <input
+                            id="moc_nip"
+                            type="text"
+                            className="clean-input"
+                            placeholder="Numer NIP"
+                            value={pelnomocnictwoData.mocodawca.nip}
+                            onChange={(e) =>
+                              setPelnomocnictwoData({
+                                ...pelnomocnictwoData,
+                                mocodawca: { ...pelnomocnictwoData.mocodawca, nip: e.target.value },
+                              })
+                            }
+                          />
+                        </div>
+
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="moc_krs">KRS:</label>
+                          <input
+                            id="moc_krs"
+                            type="text"
+                            className="clean-input"
+                            placeholder="Numer KRS"
+                            value={pelnomocnictwoData.mocodawca.krs}
+                            onChange={(e) =>
+                              setPelnomocnictwoData({
+                                ...pelnomocnictwoData,
+                                mocodawca: { ...pelnomocnictwoData.mocodawca, krs: e.target.value },
+                              })
+                            }
+                          />
+                        </div>
+
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="moc_podpis">Osoba podpisująca:</label>
+                          <input
+                            id="moc_podpis"
+                            type="text"
+                            className="clean-input"
+                            placeholder="Imię i nazwisko osoby podpisującej"
+                            value={pelnomocnictwoData.mocodawca.podpisujacy_imie_nazwisko}
+                            onChange={(e) =>
+                              setPelnomocnictwoData({
+                                ...pelnomocnictwoData,
+                                mocodawca: {
+                                  ...pelnomocnictwoData.mocodawca,
+                                  podpisujacy_imie_nazwisko: e.target.value,
+                                },
+                              })
+                            }
+                          />
                         </div>
                       </div>
 
-                      {/* Kategoria 2: "pelnomocnicy" */}
-                      <div className="gov-form-section">
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-                          <h3 className="gov-section-title" style={{ margin: 0 }}>
-                            Kategoria: <code>"pelnomocnicy[]"</code>
+                      {/* Sekcja: Pełnomocnicy */}
+                      <div className="clean-form-section">
+                        <div className="clean-section-header">
+                          <h3 className="clean-section-title">
+                            Kategoria: "pelnomocnicy"
                           </h3>
-                          <span className="gov-badge">Osoby otrzymujące pełnomocnictwo</span>
+                          <span className="gov-badge">Otrzymujący</span>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '14px' }}>
-                          <div className="gov-form-group">
-                            <label className="gov-label" htmlFor="pel_imie">
-                              <code>imie_nazwisko</code> (w mianowniku)
-                            </label>
-                            <input
-                              id="pel_imie"
-                              type="text"
-                              className="gov-input"
-                              placeholder="np. Krystyna Mazowiecka"
-                              value={pelnomocnictwoData.pelnomocnicy.imie_nazwisko}
-                              onChange={(e) =>
-                                setPelnomocnictwoData({
-                                  ...pelnomocnictwoData,
-                                  pelnomocnicy: { ...pelnomocnictwoData.pelnomocnicy, imie_nazwisko: e.target.value },
-                                })
-                              }
-                            />
-                          </div>
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="pel_imie">Imię i nazwisko:</label>
+                          <input
+                            id="pel_imie"
+                            type="text"
+                            className="clean-input"
+                            placeholder="w mianowniku"
+                            value={pelnomocnictwoData.pelnomocnicy.imie_nazwisko}
+                            onChange={(e) =>
+                              setPelnomocnictwoData({
+                                ...pelnomocnictwoData,
+                                pelnomocnicy: { ...pelnomocnictwoData.pelnomocnicy, imie_nazwisko: e.target.value },
+                              })
+                            }
+                          />
+                        </div>
 
-                          <div className="gov-form-group">
-                            <label className="gov-label" htmlFor="pel_pesel">
-                              <code>pesel</code> (Liczba lub tekst)
-                            </label>
-                            <input
-                              id="pel_pesel"
-                              type="text"
-                              className="gov-input"
-                              placeholder="np. 85120133547"
-                              value={pelnomocnictwoData.pelnomocnicy.pesel}
-                              onChange={(e) =>
-                                setPelnomocnictwoData({
-                                  ...pelnomocnictwoData,
-                                  pelnomocnicy: { ...pelnomocnictwoData.pelnomocnicy, pesel: e.target.value },
-                                })
-                              }
-                            />
-                          </div>
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="pel_pesel">PESEL:</label>
+                          <input
+                            id="pel_pesel"
+                            type="text"
+                            className="clean-input"
+                            placeholder="11 cyfr PESEL"
+                            value={pelnomocnictwoData.pelnomocnicy.pesel}
+                            onChange={(e) =>
+                              setPelnomocnictwoData({
+                                ...pelnomocnictwoData,
+                                pelnomocnicy: { ...pelnomocnictwoData.pelnomocnicy, pesel: e.target.value },
+                              })
+                            }
+                          />
                         </div>
                       </div>
                     </div>
                   )}
 
                   {/* ======================================================== */}
-                  {/* KATEGORIE DLA: PRZELEW BANKOWY (przelew.json)             */}
+                  {/* DOKUMENT 3: POTWIERDZENIE PRZELEWU                       */}
                   {/* ======================================================== */}
                   {currentDocIndex === 2 && (
                     <div>
-                      {/* Kategoria 1: "przelew_bankowy" */}
-                      <div className="gov-form-section">
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-                          <h3 className="gov-section-title" style={{ margin: 0 }}>
-                            Kategoria: <code>"przelew_bankowy"</code>
+                      {/* Sekcja: Przelew bankowy */}
+                      <div className="clean-form-section">
+                        <div className="clean-section-header">
+                          <h3 className="clean-section-title">
+                            Kategoria: "przelew_bankowy"
                           </h3>
-                          <span className="gov-badge">Potwierdzenie przelewu KIO</span>
+                          <span className="gov-badge">Wpis KIO</span>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                          <div className="gov-form-group">
-                            <label className="gov-label" htmlFor="prz_data">
-                              <code>data_operacji</code>
-                            </label>
-                            <input
-                              id="prz_data"
-                              type="text"
-                              className="gov-input"
-                              placeholder="Format: 'YYYY-MM-DD' (np. 2025-10-09)"
-                              value={przelewData.przelew_bankowy.data_operacji}
-                              onChange={(e) =>
-                                setPrzelewData({
-                                  ...przelewData,
-                                  przelew_bankowy: { ...przelewData.przelew_bankowy, data_operacji: e.target.value },
-                                })
-                              }
-                            />
-                          </div>
-
-                          <div className="gov-form-group">
-                            <label className="gov-label" htmlFor="prz_kwota">
-                              <code>kwota</code> (wartość numeryczna w PLN)
-                            </label>
-                            <input
-                              id="prz_kwota"
-                              type="text"
-                              className="gov-input"
-                              placeholder="np. 10000.00 lub 15000.00"
-                              value={przelewData.przelew_bankowy.kwota}
-                              onChange={(e) =>
-                                setPrzelewData({
-                                  ...przelewData,
-                                  przelew_bankowy: { ...przelewData.przelew_bankowy, kwota: e.target.value },
-                                })
-                              }
-                            />
-                            <span className="gov-hint">Stawki ustawowe: 7500.00, 10000.00, 15000.00, 20000.00</span>
-                          </div>
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="prz_data">Data operacji:</label>
+                          <input
+                            id="prz_data"
+                            type="text"
+                            className="clean-input"
+                            placeholder="dd.mm.rrrr"
+                            value={przelewData.przelew_bankowy.data_operacji}
+                            onChange={(e) =>
+                              setPrzelewData({
+                                ...przelewData,
+                                przelew_bankowy: { ...przelewData.przelew_bankowy, data_operacji: e.target.value },
+                              })
+                            }
+                          />
                         </div>
 
-                        <div className="gov-form-group">
-                          <label className="gov-label" htmlFor="prz_na_rachunek">
-                            <code>na_rachunek</code> (26 cyfr rachunku odbiorcy)
-                          </label>
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="prz_kwota">Kwota:</label>
+                          <input
+                            id="prz_kwota"
+                            type="text"
+                            className="clean-input"
+                            placeholder="np. 10 000.00"
+                            value={przelewData.przelew_bankowy.kwota}
+                            onChange={(e) =>
+                              setPrzelewData({
+                                ...przelewData,
+                                przelew_bankowy: { ...przelewData.przelew_bankowy, kwota: e.target.value },
+                              })
+                            }
+                          />
+                        </div>
+
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="prz_na_rachunek">Na rachunek:</label>
                           <input
                             id="prz_na_rachunek"
                             type="text"
-                            className="gov-input"
+                            className="clean-input"
+                            placeholder="60 1010 1010 0081 3622 3100 0000"
                             value={przelewData.przelew_bankowy.na_rachunek}
                             onChange={(e) =>
                               setPrzelewData({
@@ -1672,18 +1530,15 @@ export default function App() {
                               })
                             }
                           />
-                          <span className="gov-hint">Domyślny rachunek UZP w NBP: 60101010100081362231000000</span>
                         </div>
 
-                        <div className="gov-form-group">
-                          <label className="gov-label" htmlFor="prz_z_rachunku">
-                            <code>z_rachunku</code> (26 cyfr rachunku nadawcy)
-                          </label>
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="prz_z_rachunku">Z rachunku:</label>
                           <input
                             id="prz_z_rachunku"
                             type="text"
-                            className="gov-input"
-                            placeholder="np. 508020546000005888744244"
+                            className="clean-input"
+                            placeholder="26 cyfr nadawcy"
                             value={przelewData.przelew_bankowy.z_rachunku}
                             onChange={(e) =>
                               setPrzelewData({
@@ -1694,15 +1549,13 @@ export default function App() {
                           />
                         </div>
 
-                        <div className="gov-form-group">
-                          <label className="gov-label" htmlFor="prz_tytul">
-                            <code>tytul</code> (Tytuł przelewu)
-                          </label>
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="prz_tytul">Tytuł:</label>
                           <textarea
                             id="prz_tytul"
-                            className="gov-textarea"
-                            rows={3}
-                            placeholder="np. WPIS OD ODW., ZAM: ..."
+                            className="clean-textarea"
+                            rows={2}
+                            placeholder="Tytuł przelewu"
                             value={przelewData.przelew_bankowy.tytul}
                             onChange={(e) =>
                               setPrzelewData({
@@ -1713,15 +1566,13 @@ export default function App() {
                           ></textarea>
                         </div>
 
-                        <div className="gov-form-group">
-                          <label className="gov-label" htmlFor="prz_nr_transakcji">
-                            <code>numer_transakcji</code> (jeśli występuje, inaczej null)
-                          </label>
+                        <div className="clean-row">
+                          <label className="clean-label" htmlFor="prz_nr_transakcji">Nr transakcji:</label>
                           <input
                             id="prz_nr_transakcji"
                             type="text"
-                            className="gov-input"
-                            placeholder="Identyfikator transakcji lub puste dla null"
+                            className="clean-input"
+                            placeholder="opcjonalny numer transakcji"
                             value={przelewData.przelew_bankowy.numer_transakcji}
                             onChange={(e) =>
                               setPrzelewData({
@@ -1736,18 +1587,18 @@ export default function App() {
                   )}
 
                   {/* Dolny pasek akcji formularza */}
-                  <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid var(--gov-border-light)', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ marginTop: '20px', paddingTop: '14px', borderTop: '1px solid var(--gov-border-light)', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
                     <button type="button" className="gov-btn-process" onClick={handleSaveData}>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="18" height="18">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="16" height="16">
                         <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
                         <polyline points="17 21 17 13 7 13 7 21"></polyline>
                         <polyline points="7 3 7 8 15 8"></polyline>
                       </svg>
-                      <span>Zapisz poprawki</span>
+                      <span>Zapisz</span>
                     </button>
 
                     {currentDocIndex < docSlots.length - 1 ? (
-                      <button type="button" className="gov-btn-primary" onClick={goToNextDoc} style={{ maxWidth: '240px' }}>
+                      <button type="button" className="gov-btn-primary" onClick={goToNextDoc} style={{ maxWidth: '200px' }}>
                         <span>Następny plik →</span>
                       </button>
                     ) : (
@@ -1755,9 +1606,9 @@ export default function App() {
                         type="button"
                         className="gov-btn-primary"
                         onClick={() => setShowJsonModal(true)}
-                        style={{ maxWidth: '280px' }}
+                        style={{ maxWidth: '240px' }}
                       >
-                        <span>Eksportuj kanoniczny JSON</span>
+                        <span>Pobierz JSON</span>
                       </button>
                     )}
                   </div>
@@ -1790,7 +1641,7 @@ export default function App() {
               color: 'var(--gov-text)',
               border: '2px solid var(--gov-border)',
               borderRadius: '4px',
-              maxWidth: '760px',
+              maxWidth: '720px',
               width: '100%',
               maxHeight: '85vh',
               display: 'flex',
@@ -1800,32 +1651,32 @@ export default function App() {
           >
             <div
               style={{
-                padding: '16px 20px',
+                padding: '14px 18px',
                 borderBottom: '1px solid var(--gov-border-light)',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
               }}
             >
-              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 900 }}>
-                Kanoniczny JSON zgodny z <code>oczekiwane-json/{activeDoc.id}.json</code>
+              <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 900 }}>
+                Kanoniczny JSON: {activeDoc.id}.json
               </h3>
               <button
                 type="button"
                 className="a11y-btn"
                 onClick={() => setShowJsonModal(false)}
-                style={{ fontSize: '1rem', padding: '4px 10px' }}
+                style={{ fontSize: '0.875rem', padding: '3px 8px' }}
               >
                 ✕
               </button>
             </div>
 
-            <div style={{ padding: '20px', overflowY: 'auto', flex: 1, backgroundColor: 'var(--gov-surface)' }}>
+            <div style={{ padding: '16px', overflowY: 'auto', flex: 1, backgroundColor: 'var(--gov-surface)' }}>
               <pre
                 style={{
                   margin: 0,
                   fontFamily: 'monospace',
-                  fontSize: '0.875rem',
+                  fontSize: '0.8125rem',
                   lineHeight: '1.5',
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-all',
@@ -1837,11 +1688,11 @@ export default function App() {
 
             <div
               style={{
-                padding: '14px 20px',
+                padding: '12px 18px',
                 borderTop: '1px solid var(--gov-border-light)',
                 display: 'flex',
                 justifyContent: 'flex-end',
-                gap: '12px',
+                gap: '10px',
               }}
             >
               <button
