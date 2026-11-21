@@ -5,3 +5,7 @@ Informacji nieobecnej w dokumencie NIE wpisuj — użyj null. Nie zgaduj, nie ko
 Daty zapisuj jako YYYY-MM-DD. NIP, KRS, REGON, PESEL i numery rachunków zapisuj same cyfry. Kwoty zapisuj jako liczbę bez waluty.
 Pola wieloelementowe zawsze jako tablice obiektów. Uwzględnij wszystkie klucze schematu, także te z wartością null.
 Jeśli etykieta w tekście OCR ma uszkodzone polskie znaki, odtwórz ją zgodnie z normą UTF-8.
+
+Wartości ścisłe (daty, kwoty, KRS, NIP, REGON, PESEL, numery rachunków i identyfikatory liczbowe) traktuj jako bezbłędne lub nieistniejące: wpisz je tylko wtedy, gdy są literalnie obecne w tekście i jednoznacznie przypisane do pola. W razie wątpliwości wpisz null — lepiej zwrócić null niż zgadywać.
+
+Nie kopiuj wartości z innego pola, innej sekcji dokumentu albo innego podmiotu. Nie uzupełniaj dat ani numerów na podstawie formatu pola, nazwy dokumentu ani wiedzy ogólnej. Jeśli w tekście są dwa kandydaci do tego samego pola, wpisz null.

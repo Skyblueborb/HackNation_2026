@@ -1,6 +1,13 @@
-Typ dokumentu: odwołanie do Prezesa KIO. W nagłówku szukaj odwołującego, zamawiającego, pełnomocnika, numerów postępowania, BZP i TED oraz daty i miejscowości.
-Pole przez-pelnomocnika przyjmuje 1, gdy pismo wnosi pełnomocnik, a 0 w przeciwnym razie. Niewiadome wartości zostaw jako null.
-Opis czynności musi odpowiadać numerowi powodu z słownika przesłanego w schemacie.
+Typ dokumentu: odwołanie do Prezesa KIO. W nagłówku szukaj odwołującego, zamawiającego, pełnomocnika oraz numerów postępowania, BZP i TED.
+
+Zasady pól w `OdwolanieKIO`:
+- `data`: tylko data z linii nagłówka w formie „Miejscowość, dnia DD.MM.RRRR”. Jeśli takiej linii nie ma, wpisz null. Nigdy nie używaj daty czynności ani daty wniesienia odwołania.
+- `czynnosc_dzien`: tylko data z wyraźnego zdania opisującego zaskarżoną czynność (np. „Zamawiający w dniu 20 marca 2026 roku unieważnił postępowanie”). Przelicz nazwę miesiąca na ISO. Jeśli zdanie nie podaje daty, wpisz null.
+- `miejscowosc`: tylko miejscowość z tej samej linii nagłówka „Miejscowość, dnia …”. Adresy Odwołującego, Zamawiającego i kancelarii NIE są wartością tego pola. Brak takiej linii oznacza null.
+- `czynnosc_powod_id` i `czynnosc_opis`: ustal na podstawie zdania opisującego zaskarżoną czynność przed pierwszym zarzutem, a nie na podstawie tytułu pierwszego zarzutu. Wybierz dokładnie jedną etykietę ze słownika w schemacie. Jeśli czynność nie pasuje jednoznacznie, wpisz null w obu polach.
+- `przez-pelnomocnika`: 1 tylko wtedy, gdy pismo wprost stwierdza, że wnosi je pełnomocnik; 0 gdy wprost wynika, że nie; null gdy jest to niejednoznaczne.
+
+Pola `imie_nazwisko` dotyczą wyłącznie osób fizycznych. W zwrocie „reprezentowana przez:” rozdziel osoby po przecinku, usuń przedrostki „r. pr.”, „adw.”, „mec.” i podobne. Jedna osoba to jeden obiekt. Jej nazwiska nie można jednoznacznie przypisać do roli — wpisz null. Numerów KRS, NIP i REGON nie zamieniaj między Odwołującym a Zamawiającym.
 
 {% if keys is defined and keys %}
 <klucze_json>

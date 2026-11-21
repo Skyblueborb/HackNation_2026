@@ -28,7 +28,9 @@ fields:
     enum_role: key
     description: >-
       Identyfikator powodu odwołania jako liczba całkowita 1-11 (bez zera
-      wiodącego), ustalana WYŁĄCZNIE na podstawie pierwszego zarzutu.
+      wiodącego), ustalany na podstawie zdania opisującego zaskarżoną czynność
+      przed pierwszym zarzutem, nie na podstawie tytułu pierwszego zarzutu.
+      Jeśli czynność nie pasuje jednoznacznie do słownika, wpisz null.
 
   - path: OdwolanieKIO.czynnosc_opis
     kind: string

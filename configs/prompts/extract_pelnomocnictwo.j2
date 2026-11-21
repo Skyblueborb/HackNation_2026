@@ -1,6 +1,13 @@
 Typ dokumentu: pełnomocnictwo. Mocodawcą może być osoba prawna albo fizyczna; podpisujący działają w jego imieniu. Pełnomocników może być wielu — każdy jako osobny element tablicy.
 Przeszukaj cały dokument, także końcowe listy pełnomocników i numery wpisów na listy zawodowe.
 
+Role i pola osobowe:
+- Gdy `mocodawca[].data.typ` to `osoba_prawna`, pole `imie_nazwisko` musi być null. Nazwę firmy wpisz do `nazwa`, a KRS/NIP tylko do pól tego samego mocodawcy.
+- `mocodawca[].podpisujacy[].imie_nazwisko` to wyłącznie osoby fizyczne podpisujące w imieniu mocodawcy. Nigdy nazwa firmy.
+- `pelnomocnicy[].imie_nazwisko` to osoby otrzymujące pełnomocnictwo. Usuń tytuły i przedrostki: „r. pr.”, „adw.”, „mec.”, „radca prawny”. Jedna osoba to jeden element tablicy.
+- PESEL wpisz tylko wtedy, gdy stoi literalnie przy tej osobie. W przeciwnym razie null.
+- Jeśli nie potrafisz jednoznacznie przypisać osoby do roli, wpisz null zamiast zgadywać.
+
 {% if keys is defined and keys %}
 <klucze_json>
 Zwróć JSON używając WYŁĄCZNIE tych kluczy, w tej kolejności, bez żadnych innych kluczy i bez polskich etykiet:
