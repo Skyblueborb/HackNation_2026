@@ -1,8 +1,16 @@
+import io
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 import lab.model_check as mc
+
+
+def _pdf_bytes() -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", (64, 64), "white").save(buf, format="PDF")
+    return buf.getvalue()
 
 
 def _make_data_root(base: Path, n_sets: int, with_scans: bool = False) -> Path:
@@ -12,12 +20,12 @@ def _make_data_root(base: Path, n_sets: int, with_scans: bool = False) -> Path:
     for index in range(1, n_sets + 1):
         set_dir = dane / f"przyklad_{index:02d}"
         set_dir.mkdir()
-        (set_dir / "odwolanie.pdf").write_bytes(b"%PDF")
+        (set_dir / "odwolanie.pdf").write_bytes(_pdf_bytes())
         (set_dir / "odwolanie.json").write_text("{}", encoding="utf-8")
     if with_scans:
         scan_dir = dane / "skany" / "odwolania" / "0001"
         scan_dir.mkdir(parents=True)
-        (scan_dir / "0001.pdf").write_bytes(b"%PDF")
+        (scan_dir / "0001.pdf").write_bytes(_pdf_bytes())
         (scan_dir / "0001.json").write_text("{}", encoding="utf-8")
     return root
 
@@ -94,3 +102,83 @@ def test_potwierdzenie_pdf_maps_to_przelew_gold(tmp_path):
     )
     assert cases[0].class_id == "potwierdzenie_przelewu"
     assert cases[0].gold.name == "przelew.json"
+
+
+def test_run_case_e2e_writes_ocr_artifact_and_prediction(tmp_path):
+    root = _make_data_root(tmp_path, n_sets=1)
+    case = mc.select_documents(
+        root, corpus="przyklad", count=1, random_sample=False, seed=42,
+        sets=None, pdf_paths=None,
+    )[0]
+
+    class FakeBackend:
+        def extract_page(self, image):
+            return "ODWOLANIE TEXT"
+
+    class FakeProcessor:
+        def process(self, document):
+            return {"class": "odwolanie", "data": {"ok": True}}
+
+    combo = tmp_path / "combo"
+    row = mc.run_case(
+        case, ocr_model="fake", llm_profile="fake", analysis="e2e",
+        combo_dir=combo, backend=FakeBackend(), processor=FakeProcessor(),
+    )
+    assert (combo / "ocr" / case.set_id / "odwolanie.ocr.txt").exists()
+    assert (combo / "predictions" / case.set_id / "odwolanie.json").exists()
+    assert row["timings"]["llm"] >= 0
+
+
+def test_run_case_ocr_only_skips_llm(tmp_path):
+    root = _make_data_root(tmp_path, n_sets=1)
+    case = mc.select_documents(
+        root, corpus="przyklad", count=1, random_sample=False, seed=42,
+        sets=None, pdf_paths=None,
+    )[0]
+
+    class FakeBackend:
+        def extract_page(self, image):
+            return "TEXT"
+
+    row = mc.run_case(
+        case, ocr_model="fake", llm_profile=None, analysis="ocr",
+        combo_dir=tmp_path / "combo", backend=FakeBackend(), processor=None,
+    )
+    assert row["timings"]["llm"] == 0.0
+    assert row["prediction"] is None
+
+
+def test_scan_llm_probe_is_na(tmp_path):
+    root = _make_data_root(tmp_path, n_sets=1, with_scans=True)
+    case = mc.select_documents(
+        root, corpus="skany", count=0, random_sample=False, seed=42,
+        sets=None, pdf_paths=None,
+    )[0]
+    result = mc.run_case(
+        case, ocr_model="fake", llm_profile="fake", analysis="llm",
+        combo_dir=tmp_path / "combo", backend=None, processor=object(),
+    )
+    assert result["status"] == "N/A"
+
+
+def test_aggregate_speed_known_values():
+    rows = [{"timings": {"ocr": 1.0}}, {"timings": {"ocr": 3.0}}]
+    out = mc.aggregate_speed(rows, ["ocr"])
+    assert out["ocr"]["mean"] == 2.0
+    assert out["ocr"]["sum"] == 4.0
+
+
+def test_score_combo_writes_metrics_and_report(tmp_path):
+    root = _make_data_root(tmp_path, n_sets=1)
+    case = mc.select_documents(
+        root, corpus="przyklad", count=1, random_sample=False, seed=42,
+        sets=None, pdf_paths=None,
+    )[0]
+    combo = tmp_path / "combo"
+    pred_dir = combo / "predictions" / case.set_id
+    pred_dir.mkdir(parents=True)
+    (pred_dir / "odwolanie.json").write_text("{}", encoding="utf-8")
+    result = mc.score_combo([case], combo, mc._specs(), [case.set_id])
+    assert (combo / "metrics.json").exists()
+    assert (combo / "report.md").exists()
+    assert "f1_skip" in str(result)
