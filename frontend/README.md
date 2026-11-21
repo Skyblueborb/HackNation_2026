@@ -18,7 +18,10 @@ npm run lint     # oxlint
 Frontend **nie** wysyła żadnego tokenu i nie używa zmiennych `VITE_API_TOKEN`.
 Zmienne `VITE_*` są wstawiane do bundle'a i są widoczne dla każdego użytkownika.
 
-- Backend chroni endpointy własnym `API_TOKEN` (opcjonalny, domyślnie pusty tylko na lokalny dev).
+- Backend chroni endpointy własnym `API_TOKEN`. Backend nie wystartuje bez
+  tokenu, chyba że ustawiono `O2J_DEV_NO_AUTH=1` wyłącznie dla lokalnego dev-u.
+  W Dockerze nginx dodaje nagłówek z `O2J_API_TOKEN`; w Vite dev-proxy robi to
+  zmienna `O2J_API_TOKEN` (czytana tylko po stronie Node).
 - Dev-proxy Vite przekazuje `/api` bez modyfikacji nagłówków. Jeśli wdrożenie
   wymaga tokenu na poziomie proxy, ustaw go po stronie proxy/backu (np. nginx
   lub `docker-compose.yml`), nigdy w kodzie klienta.

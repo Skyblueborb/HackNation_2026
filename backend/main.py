@@ -288,6 +288,14 @@ async def analyze(
         if isinstance(llm, dict) and isinstance(llm.get("data"), dict)
         else {"raw_text": text_p1_3}
     )
+    # LLM returns spec ids (e.g. potwierdzenie_przelewu); storage uses doc
+    # classes (przelew). Trust the classified class over the multipart guess.
+    if isinstance(llm, dict) and llm.get("class"):
+        spec_id = llm["class"]
+        for doc_key, mapped_id in repo.CLASS_TO_SPEC_ID.items():
+            if mapped_id == spec_id:
+                doc_class = doc_key  # type: ignore[assignment]
+                break
     with db() as conn:
         saved = repo.ingest_document(
             conn,

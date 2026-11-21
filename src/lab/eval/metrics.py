@@ -218,22 +218,22 @@ def evaluate_run(
 
             file_counts = _empty_counts_map()
 
-            # Only pred-only extras are false positives. If gold carries the
-            # same '!extra:' key it is a quirk of the gold document, not a
-            # spurious prediction, and must not enter the counts at all.
+            # A '!extra:' key present only in pred is a false positive.
+            # A gold-side extra is a real field: missing it in pred is a FN,
+            # matching it is a TP. Keep it in all_paths so scores stay comparable.
             extra_pred_paths = {
                 p
                 for p in pred_flat
                 if p.startswith("!extra:") and pred_flat[p] is not None and p not in gold_flat
             }
-            all_paths = {p for p in gold_flat if not p.startswith("!extra:")} | extra_pred_paths
+            all_paths = set(gold_flat) | extra_pred_paths
 
             field_by_path = {f.path: f for f in spec.fields}
 
             for path in all_paths:
                 field_key = canonicalize_path(path)
 
-                if path.startswith("!extra:"):
+                if path.startswith("!extra:") and path not in gold_flat:
                     pred_val = pred_flat.get(path)
                     gold_val = None
                     for mode in _MODES:

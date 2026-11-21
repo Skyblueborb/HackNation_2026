@@ -53,6 +53,9 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    environment:
+      # nginx dodaje ten nagłówek do każdego /api; nie trafia do bundle'a JS.
+      O2J_API_TOKEN: ${API_TOKEN:-}
     ports:
       - "3000:80"
     restart: unless-stopped

@@ -71,6 +71,42 @@ def _repair_foreign_keys(conn: sqlite3.Connection) -> None:
         conn.execute("PRAGMA foreign_keys = ON")
 
 
+def _dedupe_source_documents(conn: sqlite3.Connection) -> None:
+    """Merge legacy duplicates before creating the unique (token, doc id) index.
+
+    Older check-then-write upserts could insert two source rows for the same
+    key. Keep the oldest row and move its dependent records over before deleting
+    the extras, so CREATE UNIQUE INDEX cannot fail on an existing database.
+    """
+    groups = conn.execute(
+        "SELECT client_token, client_doc_id, GROUP_CONCAT(id) AS ids "
+        "FROM source_documents "
+        "WHERE client_token IS NOT NULL AND client_doc_id IS NOT NULL "
+        "GROUP BY client_token, client_doc_id HAVING COUNT(*) > 1"
+    ).fetchall()
+    tables = (
+        "json_odwolanie",
+        "json_pelnomocnictwo",
+        "json_przelew",
+        "correction_sessions",
+        "approved_docs",
+    )
+    for group in groups:
+        keep = group["ids"].split(",")[0]
+        for extra in group["ids"].split(",")[1:]:
+            for table in tables:
+                conn.execute(
+                    f"DELETE FROM {table} WHERE document_id = ? "
+                    f"AND EXISTS (SELECT 1 FROM {table} WHERE document_id = ?)",
+                    (extra, keep),
+                )
+                conn.execute(
+                    f"UPDATE {table} SET document_id = ? WHERE document_id = ?",
+                    (keep, extra),
+                )
+            conn.execute("DELETE FROM source_documents WHERE id = ?", (extra,))
+
+
 def init_db(db_path: str | Path | None = None) -> Path:
     """Stwórz tabele (idempotentnie). Zwraca ścieżkę do pliku bazy."""
     path = Path(db_path) if db_path is not None else default_db_path()
@@ -89,6 +125,7 @@ def init_db(db_path: str | Path | None = None) -> Path:
         # Przy przebudowie tabel znikają ich indeksy — odtwórz z schematu.
         conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
 
+        _dedupe_source_documents(conn)
         conn.execute("DROP INDEX IF EXISTS idx_source_documents_token_class")
         conn.execute("DROP INDEX IF EXISTS idx_source_documents_client_doc")
         # client_doc_id is only unique inside one client_token. Keying on the

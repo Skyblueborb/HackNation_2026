@@ -53,7 +53,10 @@ def data_root(*, must_exist: bool = False) -> Path:
         value = _config().get("data_root")
         if value is None:
             raise RuntimeError("data_root is not set in configs/paths.yaml or O2J_DATA_ROOT")
-        path = Path(value).expanduser().resolve()
+        path = Path(value).expanduser()
+        if not path.is_absolute():
+            path = REPO_ROOT / path
+        path = path.resolve()
     return validate_data_root(path) if must_exist else path
 
 

@@ -7,7 +7,9 @@
 cp .env.example .env          # opcjonalne; skrypt ma sensowne domyślne wartości
 bash scripts/dev-up.sh        # llama-server + FastAPI :8000 + Vite :3000
 bash scripts/dev-up.sh --no-llm   # bez LLM: /api/analyze zwróci sam tekst
+API_TOKEN=<token> bash scripts/dev-up.sh --lan  # API w LAN na 0.0.0.0:8000
 ```
+Domyślnie skrypt wiąże API z `127.0.0.1`; `--lan` wymaga `API_TOKEN`.
 Ctrl-C zatrzymuje wszystko, co skrypt wystartował.
 
 **Ręcznie (samo API):**
@@ -33,10 +35,16 @@ Frontend osobno (dev): `cd frontend && npm install && npm run dev`
 Wszystkie opisane są w `.env.example`. Dwie łatwo pomylić:
 
 * **`API_TOKEN`** — chroni *ten* backend (`X-API-Token` albo `Bearer`).
-  Puste = brak autoryzacji, tylko do lokalnego dev-u.
+  Backend nie wystartuje bez tokenu, chyba że `O2J_DEV_NO_AUTH=1` (tylko lokalny dev).
 * **`API_KEY`** — wymagany tylko przez samodzielne usługi OCR
   (`ocr-api serve`, `local-ai serve`). Backend nie potrzebuje go; klucz jest
   rozwiązywany leniwie przy żądaniach chronionych przez `verify_key`.
+
+Pozostałe zmienne: `O2J_MAX_UPLOAD_MB` (domyślnie 25) ogranicza rozmiar PDF-a,
+`OCR_MAX_UPLOAD_BYTES` (domyślnie 50 MB) w usługach OCR,
+`OCR_LLM_CONCURRENCY` (domyślnie 1) steruje limitem wywołań LLM,
+`OCR_LLM_GROUND_NULL=1` włącza sprawdzanie wartości w tekście,
+`OCR_LLM_HEALTH_TIMEOUT` i `OCR_REMOTE_TIMEOUT` (domyślnie 900 s) dotyczą CLI.
 
 `CORS_ORIGINS` nie może być puste. Puste wartości mają teraz bezpieczną
 domyślną wartość `http://localhost:3000`; wildcard `*` wyłącza credentials.

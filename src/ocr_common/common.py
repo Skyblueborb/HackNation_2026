@@ -13,7 +13,18 @@ logger = logging.getLogger("ocr")
 inference_lock = asyncio.Lock()
 # One LLM server: bound concurrent LLM calls without blocking OCR. Default 1
 # also serializes the LLM client's lazy init; raise with OCR_LLM_CONCURRENCY.
-llm_semaphore = asyncio.Semaphore(int(os.environ.get("OCR_LLM_CONCURRENCY", "1")))
+def _positive_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, str(default))
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"{name} must be an integer >= 1, got {raw!r}") from exc
+    if value < 1:
+        raise RuntimeError(f"{name} must be >= 1, got {value}")
+    return value
+
+
+llm_semaphore = asyncio.Semaphore(_positive_int("OCR_LLM_CONCURRENCY", 1))
 
 MAX_EDGE = int(os.environ.get("OCR_MAX_EDGE", "2048"))
 

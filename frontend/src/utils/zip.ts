@@ -21,6 +21,33 @@ const EOCD = 0x06054b50;
 const CENTRAL = 0x02014b50;
 const LOCAL = 0x04034b50;
 
+async function readCapped(
+  stream: ReadableStream<Uint8Array>,
+  limit: number,
+  name: string,
+): Promise<Uint8Array> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel();
+      throw new Error(`Plik ${name} przekracza limit ${limit / 1024 / 1024} MB.`);
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let pos = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, pos);
+    pos += chunk.byteLength;
+  }
+  return out;
+}
+
 export async function extractZipFiles(file: File): Promise<ExtractedFile[]> {
   if (file.size > MAX_ZIP_BYTES) {
     throw new Error(`Archiwum przekracza limit ${MAX_ZIP_BYTES / 1024 / 1024} MB.`);
@@ -55,6 +82,7 @@ export async function extractZipFiles(file: File): Promise<ExtractedFile[]> {
     }
     const method = view.getUint16(offset + 10, true);
     const compressedSize = view.getUint32(offset + 20, true);
+    const uncompressedSize = view.getUint32(offset + 24, true);
     const nameLength = view.getUint16(offset + 28, true);
     const extraLength = view.getUint16(offset + 30, true);
     const commentLength = view.getUint16(offset + 32, true);
@@ -73,7 +101,7 @@ export async function extractZipFiles(file: File): Promise<ExtractedFile[]> {
     if (localOffset + 30 > bytes.length || view.getUint32(localOffset, true) !== LOCAL) {
       throw new Error(`Uszkodzony nagłówek pliku ${name}.`);
     }
-    if (compressedSize > MAX_PDF_BYTES) {
+    if (compressedSize > MAX_PDF_BYTES || uncompressedSize > MAX_PDF_BYTES) {
       throw new Error(`Plik ${name} przekracza limit ${MAX_PDF_BYTES / 1024 / 1024} MB.`);
     }
     const localNameLength = view.getUint16(localOffset + 26, true);
@@ -92,7 +120,7 @@ export async function extractZipFiles(file: File): Promise<ExtractedFile[]> {
       const decompressed = stream.pipeThrough(
         new DecompressionStream('deflate-raw'),
       );
-      fileBytes = new Uint8Array(await new Response(decompressed).arrayBuffer());
+      fileBytes = await readCapped(decompressed, MAX_PDF_BYTES, name);
     } else {
       throw new Error(`Nieobsługiwana kompresja ZIP (${method}) w pliku ${name}.`);
     }

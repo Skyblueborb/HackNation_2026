@@ -26,9 +26,11 @@ N="${1:-5}"
 BACKEND="${2:-http://localhost:8000}"
 API_TOKEN="${O2J_API_TOKEN:-${API_TOKEN:-}}"
 
-INPUT_DIR="pdfy/input"
-GOLD_DIR="pdfy/output"
-OUR_DIR="pdfy/output_nasz"
+# Dane konkursowe leżą w osobnym repo: <data_root>/dane/przyklad_*/...
+DATA_ROOT="${O2J_DATA_ROOT:-../hacknation-2026}"
+INPUT_DIR="$DATA_ROOT/dane"
+GOLD_DIR="$DATA_ROOT/dane"
+OUR_DIR="${O2J_WORK_ROOT:-work}/pipeline-tests"
 
 # Kolory do terminala
 RED='\033[0;31m'

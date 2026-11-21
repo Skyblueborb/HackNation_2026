@@ -89,7 +89,8 @@ uv run ocr-pdf2json przelew.pdf \
 Tryb zdalny:
 - nie sprawdza lokalnych wag ani lokalnego serwera LLM,
 - wysyła PDF do `POST /api/analyze` z nagłówkiem `X-API-Token`,
-- typ dokumentu wywnioskuje z nazwy pliku (`--doc-class` nadpisuje),
+- typ dokumentu wywnioskuje z tekstu (nazwa pliku tylko przy remisie);
+  `--doc-class` nadpisuje wybór,
 - zapisuje `<basename>.json` jak w trybie lokalnym,
 - wypisuje czas całego żądania.
 
