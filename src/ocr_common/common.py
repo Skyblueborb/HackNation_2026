@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import secrets
 
 import pypdfium2
 from fastapi import Header, HTTPException
@@ -10,9 +11,17 @@ logger = logging.getLogger("ocr")
 inference_lock = asyncio.Lock()
 
 MAX_EDGE = int(os.environ.get("OCR_MAX_EDGE", "2048"))
+
+# Kept for backwards compatibility. Resolve the live value in get_api_key().
 API_KEY = os.environ.get("API_KEY")
-if not API_KEY:
-    raise RuntimeError("API_KEY must be set")
+
+
+def get_api_key() -> str:
+    """Return the API key, raising only when a request actually needs it."""
+    key = os.environ.get("API_KEY")
+    if not key:
+        raise RuntimeError("API_KEY must be set")
+    return key
 
 
 def configure_logging(verbose: bool = False) -> None:
@@ -49,8 +58,6 @@ def image_is_blank(image: Image.Image) -> bool:
 
 
 def verify_key(x_api_key: str = Header(...)) -> None:
-    import secrets
-
-    if not secrets.compare_digest(x_api_key, API_KEY):
+    if not secrets.compare_digest(x_api_key, get_api_key()):
         logger.warning("rejected request: invalid API key")
         raise HTTPException(status_code=401, detail="Invalid API key")

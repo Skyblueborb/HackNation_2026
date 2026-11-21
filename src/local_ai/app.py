@@ -16,7 +16,17 @@ from ocr_common import (
     run_ocr_async,
     verify_key,
 )
-from ocr_common.common import logger
+from ocr_common.common import get_api_key, logger
+
+
+def validate_startup() -> None:
+    """Fail fast on config errors that would otherwise break the first request."""
+    get_api_key()
+    if os.environ.get("OCR_LLM_PROCESSOR"):
+        from ocr_api.llm_processor import validate_model
+
+        validate_model()
+
 
 MODEL_ID = os.environ.get("OCR_MODEL", "prithivMLmods/LightOnOCR-3-4B-MLX")
 MAX_TOKENS = int(os.environ.get("OCR_MAX_TOKENS", "2048"))
@@ -35,6 +45,7 @@ _session = None
 
 @contextlib.asynccontextmanager
 async def lifespan(_app: FastAPI):
+    validate_startup()
     logger.info(
         "starting: backend=mlx model=%s preload=%s llm=%s",
         MLX_MODEL,
