@@ -1,5 +1,6 @@
 # Katalog NADEX 'dane/' (kod szuka <data_root>/dane/przyklad_*).
-# W tym środowisku dane konkursowe leżą w ../hacknation-2026/dane.
+# W tym środowisku dane konkursowe leżą w ../dane/hacknation-2026/dane
+# (repo klonu organizatora "hacknation-2026" jest zagnieżdżone w ../dane).
 # Na innej maszynie ustaw O2J_DATA_ROOT lub zmień tę ścieżkę.
-data_root: ../hacknation-2026
+data_root: ../dane/hacknation-2026
 work_root: work
