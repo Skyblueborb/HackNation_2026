@@ -1,0 +1,15 @@
+name: E0_baseline
+split: dev
+ingest:
+  extractor: pdfplumber
+  trim: true
+  head_chars: 8000
+  tail_chars: 2000
+  candidates: false
+classify:
+  method: rules
+extract:
+  retry_on_invalid: 1
+  fewshot: 0
+post:
+  ground_null: false

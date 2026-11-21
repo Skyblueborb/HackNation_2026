@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from lab.formatting import fmt_float
+
 
 def _read_json(path: Path) -> dict[str, Any] | None:
     if not path.exists():
@@ -59,6 +61,12 @@ def collect_run_summaries(runs_root: Path) -> list[dict]:
         f1_exact_skip = exact.get("f1_skip")
         f1_fuzzy_skip = fuzzy.get("f1_skip")
 
+        n_files = metrics.get("n_files_evaluated") or 0
+        invalid = metrics.get("invalid_json") or 0
+        missing = metrics.get("missing_pred") or 0
+        null_stats = metrics.get("null_stats") or {}
+        null_gold = (null_stats.get("predicted_value_gold_null") or 0) + (null_stats.get("both_null") or 0)
+
         summaries.append(
             {
                 "run_id": run_id,
@@ -68,6 +76,16 @@ def collect_run_summaries(runs_root: Path) -> list[dict]:
                 "f1_exact_skip": f1_exact_skip,
                 "f1_fuzzy_skip": f1_fuzzy_skip,
                 "n_files_evaluated": metrics.get("n_files_evaluated"),
+                "json_validity_rate": (n_files - invalid - missing) / n_files if n_files else None,
+                "null_hallucination_rate": (
+                    (null_stats.get("predicted_value_gold_null") or 0) / null_gold if null_gold else None
+                ),
+                "tokens_per_doc": (
+                    ((metrics.get("prompt_tokens") or 0) + (metrics.get("completion_tokens") or 0)) / n_files
+                    if n_files
+                    else None
+                ),
+                "sec_per_doc": (metrics.get("seconds") or 0) / n_files if n_files else None,
                 "started": started,
                 "finished": finished,
             }
@@ -80,12 +98,6 @@ def collect_run_summaries(runs_root: Path) -> list[dict]:
     return summaries
 
 
-def _fmt_float(value: Any) -> str:
-    if isinstance(value, (int, float)):
-        return f"{value:.4f}"
-    return "n/a"
-
-
 def render_leaderboard_md(summaries: list[dict]) -> str:
     """Render a markdown leaderboard table. Returns a short 'no runs yet'
     message instead of an empty table when `summaries` is empty."""
@@ -95,19 +107,23 @@ def render_leaderboard_md(summaries: list[dict]) -> str:
     lines = [
         "# Leaderboard",
         "",
-        "| run_id | experiment | model | split | n_files | f1_exact | f1_fuzzy | started |",
-        "|---|---|---|---|---|---|---|---|",
+        "| run_id | experiment | model | split | n_files | f1_exact | f1_fuzzy | json_valid | null_halluc | tok/doc | s/doc | started |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for s in summaries:
         lines.append(
-            "| {run_id} | {experiment} | {model} | {split} | {n_files} | {f1_exact} | {f1_fuzzy} | {started} |".format(
+            "| {run_id} | {experiment} | {model} | {split} | {n_files} | {f1_exact} | {f1_fuzzy} | {json_valid} | {null_halluc} | {tok_doc} | {sec_doc} | {started} |".format(
                 run_id=s.get("run_id", "unknown"),
                 experiment=s.get("experiment", "unknown"),
                 model=s.get("model_id", "unknown"),
                 split=s.get("split", "unknown"),
                 n_files=s.get("n_files_evaluated") if s.get("n_files_evaluated") is not None else "n/a",
-                f1_exact=_fmt_float(s.get("f1_exact_skip")),
-                f1_fuzzy=_fmt_float(s.get("f1_fuzzy_skip")),
+                f1_exact=fmt_float(s.get("f1_exact_skip")),
+                f1_fuzzy=fmt_float(s.get("f1_fuzzy_skip")),
+                json_valid=fmt_float(s.get("json_validity_rate")),
+                null_halluc=fmt_float(s.get("null_hallucination_rate")),
+                tok_doc=fmt_float(s.get("tokens_per_doc")),
+                sec_doc=fmt_float(s.get("sec_per_doc")),
                 started=s.get("started") or "n/a",
             )
         )

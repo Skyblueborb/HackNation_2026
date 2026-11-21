@@ -2,10 +2,9 @@
 run (eval, and later train/sweep), written alongside metrics.json /
 errors.md in the run directory.
 
-See AI/PLAN.md section 11 for the canonical manifest.json shape. This
-module's RunManifest is a Phase-A-scoped subset of that shape (no
-`prompts_sha256` / `server` blocks yet -- those arrive with real model
-runs in a later phase).
+See AI/PLAN.md section 11 for the canonical manifest.json shape. The
+`prompts_sha256` / `server` / `params` blocks are populated by real LLM
+runs; older eval-only runs leave them empty.
 """
 
 from __future__ import annotations
@@ -68,6 +67,9 @@ class RunManifest:
     experiment: str
     config_sha256: str | None
     model: dict[str, Any] = field(default_factory=dict)
+    prompts_sha256: dict[str, str] = field(default_factory=dict)
+    server: dict[str, Any] = field(default_factory=dict)
+    params: dict[str, Any] = field(default_factory=dict)
     split: str = "all"
     splits_sha256: str | None = None
     data_commit: str | None = None
@@ -97,6 +99,9 @@ def new_manifest(
     work_root: Path,
     config_path: Path | None = None,
     model: dict | None = None,
+    prompts_sha256: dict[str, str] | None = None,
+    server: dict | None = None,
+    params: dict | None = None,
 ) -> RunManifest:
     """Build a RunManifest with started=now, finished=None."""
     repo_root = Path(__file__).resolve().parents[2]
@@ -122,6 +127,9 @@ def new_manifest(
         experiment=experiment,
         config_sha256=config_sha256,
         model=model_dict,
+        prompts_sha256=dict(prompts_sha256 or {}),
+        server=dict(server or {}),
+        params=dict(params or {}),
         split=split,
         splits_sha256=splits_sha256,
         data_commit=data_commit,

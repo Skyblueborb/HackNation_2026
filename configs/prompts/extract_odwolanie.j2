@@ -1,0 +1,20 @@
+Typ dokumentu: odwołanie do Prezesa KIO. W nagłówku szukaj odwołującego, zamawiającego, pełnomocnika, numerów postępowania, BZP i TED oraz daty i miejscowości.
+Pole przez-pelnomocnika przyjmuje 1, gdy pismo wnosi pełnomocnik, a 0 w przeciwnym razie. Niewiadome wartości zostaw jako null.
+Opis czynności musi odpowiadać numerowi powodu z słownika przesłanego w schemacie.
+
+{% if keys is defined and keys %}
+<klucze_json>
+Zwróć JSON używając WYŁĄCZNIE tych kluczy, w tej kolejności, bez żadnych innych kluczy i bez polskich etykiet:
+{{ keys | join('\n') }}
+</klucze_json>
+{% endif %}
+
+<ocr_text>
+{{ text }}
+</ocr_text>
+{% if candidates %}
+<kandydaci_z_tekstu>
+{{ candidates }}
+</kandydaci_z_tekstu>
+Użyj kandydatów tylko wtedy, gdy rzeczywiście występują w tekście dokumentu.
+{% endif %}

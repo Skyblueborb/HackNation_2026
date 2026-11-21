@@ -117,6 +117,19 @@ class EvalResult:
     missing_pred: int = 0
     n_files_evaluated: int = 0
     mismatches: list[dict[str, Any]] = field(default_factory=list)
+    model_id: str | None = None
+    n_llm_calls: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    seconds: float = 0.0
+    null_stats: dict[str, int] = field(
+        default_factory=lambda: {
+            "predicted_null_gold_value": 0,
+            "predicted_value_gold_null": 0,
+            "both_null": 0,
+            "non_null": 0,
+        }
+    )
 
 
 def _add_verdict(
@@ -139,6 +152,9 @@ def evaluate_run(
     gold_dir: Path,
     specs: dict[str, DocClassSpec],
     set_ids: list[str] | None = None,
+    *,
+    classification: dict[str, str | None] | None = None,
+    run_stats: dict[str, Any] | None = None,
 ) -> EvalResult:
     """Evaluate predictions in `pred_dir` against gold in `gold_dir` for each
     of the 3 document classes, across every set in `set_ids` (or every
@@ -147,12 +163,14 @@ def evaluate_run(
     For the Phase A identity sanity check, call this with
     `pred_dir == gold_dir`.
 
-    Classification/reject-detection: no classifier exists yet in this phase
-    (that's a later phase's job -- wiring it in is NOT in scope for A4). For
-    every file found, this function simply records it as "correctly
-    classified as its own class, not rejected" so `classification` and
-    `reject` are shaped correctly and ready for a real classifier to feed
-    into later.
+    Classification/reject-detection: when `classification` maps relative
+    prediction paths to predicted class ids, real confusion counts are
+    recorded (`reject` counts a correct class as TP and `nieznany`/wrong
+    class as FN, since this corpus contains no negative documents). Without
+    it the Phase-A placeholder records every file as correctly classified.
+
+    `run_stats` optionally carries pipeline counters (invalid_json, retries,
+    tokens, seconds, llm_calls) that cannot be inferred from prediction files.
     """
     pred_dir = Path(pred_dir)
     gold_dir = Path(gold_dir)
@@ -224,6 +242,14 @@ def evaluate_run(
 
                 gold_val = gold_flat.get(path)
                 pred_val = pred_flat.get(path)
+                if gold_val is None and pred_val is None:
+                    result.null_stats["both_null"] += 1
+                elif gold_val is None:
+                    result.null_stats["predicted_value_gold_null"] += 1
+                elif pred_val is None:
+                    result.null_stats["predicted_null_gold_value"] += 1
+                else:
+                    result.null_stats["non_null"] += 1
                 fspec = field_by_path.get(field_key)
                 normalizer_name = fspec.normalizer if fspec is not None else "identity"
 
@@ -244,12 +270,23 @@ def evaluate_run(
             result.per_file[rel_path] = file_counts
             result.n_files_evaluated += 1
 
-            # Classification / reject wiring is out of scope for A4 -- no
-            # classifier exists yet. Trivially record "correctly classified
-            # as its own class, not rejected" so downstream shapes exist.
-            result.classification.setdefault(cid, {}).setdefault(cid, 0)
-            result.classification[cid][cid] += 1
-            result.reject.add(Verdict.TP)
+            predicted_class = (
+                (classification or {}).get(rel_path, cid) if classification is not None else cid
+            )
+            predicted_class = predicted_class or "nieznany"
+            confusion = result.classification.setdefault(cid, {})
+            confusion.setdefault(predicted_class, 0)
+            confusion[predicted_class] += 1
+            result.reject.add(Verdict.TP if predicted_class == cid else Verdict.FN)
+
+    if run_stats:
+        result.model_id = run_stats.get("model_id")
+        result.n_llm_calls = int(run_stats.get("n_llm_calls", 0))
+        result.prompt_tokens = int(run_stats.get("prompt_tokens", 0))
+        result.completion_tokens = int(run_stats.get("completion_tokens", 0))
+        result.seconds = float(run_stats.get("seconds", 0.0))
+        result.invalid_json = int(run_stats.get("invalid_json", result.invalid_json))
+        result.retries = int(run_stats.get("retries", result.retries))
 
     return result
 
@@ -292,6 +329,12 @@ def write_metrics(result: EvalResult, out_path: Path) -> None:
         },
         "classification": result.classification,
         "reject": _counts_to_dict(result.reject),
+        "model_id": result.model_id,
+        "n_llm_calls": result.n_llm_calls,
+        "prompt_tokens": result.prompt_tokens,
+        "completion_tokens": result.completion_tokens,
+        "seconds": result.seconds,
+        "null_stats": result.null_stats,
     }
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
