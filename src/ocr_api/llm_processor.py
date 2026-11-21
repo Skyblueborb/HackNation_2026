@@ -119,6 +119,7 @@ class LabLLMProcessor:
                 "error": None,
                 "llm_calls": 0,
                 "rejected": True,
+                "sanitized": 0,
             }
         if class_id not in self.specs:
             return {
@@ -127,6 +128,7 @@ class LabLLMProcessor:
                 "error": f"no spec for class {class_id}",
                 "llm_calls": 0,
                 "rejected": False,
+                "sanitized": 0,
             }
         result = extract_document(
             self.client,
@@ -142,6 +144,7 @@ class LabLLMProcessor:
             "error": result.error,
             "llm_calls": len(result.responses),
             "rejected": False,
+            "sanitized": result.sanitized,
         }
 
 

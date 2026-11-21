@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from o2jcore.normalize.script_filter import sanitize_payload
 from o2jcore.spec.jsonschema_build import build_json_schema
 from o2jcore.spec.models import DocClassSpec
 from o2jcore.spec.pydantic_build import build_model
@@ -36,6 +37,7 @@ class Extraction:
     error: str | None = None
     grounded: int = 0
     derived: int = 0
+    sanitized: int = 0
 
 
 @dataclass
@@ -290,6 +292,8 @@ def extract_document(
             parsed = json.loads(unwrap_json(response.text))
             if not isinstance(parsed, dict):
                 raise ValueError("model response is not a JSON object")
+            parsed, stripped = sanitize_payload(parsed)
+            result.sanitized += stripped
             mapped = map_polish_labels(parsed, active_schema)
             obj = model.model_validate(coerce_list_fields(mapped, active_schema)).model_dump()
         except Exception as exc:
@@ -407,6 +411,7 @@ def run_pipeline(
                         "retries": 0,
                         "grounded": 0,
                         "derived": 0,
+                        "sanitized": 0,
                         "error": "rejected: class not recognized",
                     }
                 )
@@ -458,6 +463,7 @@ def run_pipeline(
                     "retries": extraction.retries,
                     "grounded": extraction.grounded,
                     "derived": extraction.derived,
+                    "sanitized": extraction.sanitized,
                     "error": extraction.error,
                 }
             )

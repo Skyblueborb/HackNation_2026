@@ -13,7 +13,9 @@ def test_lab_llm_processor_uses_coworker_module(monkeypatch):
     monkeypatch.setattr(
         adapter,
         "extract_document",
-        lambda *a, **kw: SimpleNamespace(obj={"x": 1}, error=None, responses=[1]),
+        lambda *a, **kw: SimpleNamespace(
+            obj={"x": 1}, error=None, responses=[1], sanitized=0
+        ),
     )
 
     processor = adapter.LabLLMProcessor("qwen")
@@ -26,6 +28,7 @@ def test_lab_llm_processor_uses_coworker_module(monkeypatch):
         "error": None,
         "llm_calls": 1,
         "rejected": False,
+        "sanitized": 0,
     }
 
 
@@ -44,6 +47,7 @@ def test_lab_llm_processor_missing_spec_has_full_shape(monkeypatch):
         "error": "no spec for class odwolanie",
         "llm_calls": 0,
         "rejected": False,
+        "sanitized": 0,
     }
 
 
@@ -64,6 +68,7 @@ def test_lab_llm_processor_rejects_unclassified_document(monkeypatch):
         "error": None,
         "llm_calls": 0,
         "rejected": True,
+        "sanitized": 0,
     }
 
 
@@ -84,7 +89,7 @@ def _build_processor(monkeypatch):
 
 
 def _ok_extraction():
-    return SimpleNamespace(obj={"x": 1}, error=None, responses=[1])
+    return SimpleNamespace(obj={"x": 1}, error=None, responses=[1], sanitized=0)
 
 
 def test_routing_uses_text_over_filename(monkeypatch):
