@@ -44,6 +44,7 @@ generate = None
 load = None
 load_config = None
 _session = None
+_session_path = None
 
 
 @contextlib.asynccontextmanager
@@ -72,9 +73,10 @@ app = FastAPI(title="Local OCR LLM (MLX)", lifespan=lifespan)
 _backend = None
 
 
-def mlx_session():
-    global _session, apply_chat_template, generate, load, load_config
-    if _session is None:
+def mlx_session(model_path: str | None = None):
+    global _session, _session_path, apply_chat_template, generate, load, load_config
+    path = model_path or MLX_MODEL
+    if _session is None or _session_path != path:
         if load is None:
             from mlx_vlm import generate as _generate
             from mlx_vlm import load as _load
@@ -85,14 +87,18 @@ def mlx_session():
             generate = _generate
             load = _load
             load_config = _load_config
-        model, processor = load(MLX_MODEL)
-        _session = (model, processor, load_config(MLX_MODEL))
+        model, processor = load(path)
+        _session = (model, processor, load_config(path))
+        _session_path = path
     return _session
 
 
 class MlxBackend:
+    def __init__(self, model_path: str | None = None) -> None:
+        self.model_path = model_path
+
     def extract_page(self, image: Image.Image) -> str:
-        model, processor, config = mlx_session()
+        model, processor, config = mlx_session(self.model_path)
         prompt = apply_chat_template(
             processor, config, PROMPT, num_images=1, enable_thinking=False
         )

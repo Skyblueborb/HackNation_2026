@@ -85,6 +85,20 @@ def test_run_document_returns_result_and_timings(monkeypatch):
     assert texts == ["OCR TEXT"]
 
 
+def test_run_document_with_none_processor_skips_llm(monkeypatch):
+    class FakeBackend:
+        def extract_page(self, image):
+            return "OCR"
+
+    monkeypatch.setattr(tool, "render_pages", lambda data: [object()])
+    result, timings, texts = tool.run_document(
+        b"%PDF", "odwolanie.pdf", "m", backend=FakeBackend(), processor=None
+    )
+    assert result == {"raw_text": "OCR"}
+    assert timings["llm"] == 0.0
+    assert texts == ["OCR"]
+
+
 def test_main_saves_ocr_when_flag_set(monkeypatch, tmp_path):
     pdf = tmp_path / "odwolanie.pdf"
     pdf.write_bytes(b"%PDF")

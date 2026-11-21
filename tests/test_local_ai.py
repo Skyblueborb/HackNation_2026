@@ -39,6 +39,25 @@ def test_model_id_can_be_overridden_for_one_trial(monkeypatch):
     importlib.reload(app_module)
 
 
+def test_mlx_session_reloads_when_model_path_changes(monkeypatch):
+    import local_ai.app as app
+
+    loads = []
+
+    def fake_load(path):
+        loads.append(path)
+        return (f"model-{path}", f"proc-{path}")
+
+    monkeypatch.setattr(app, "load", fake_load)
+    monkeypatch.setattr(app, "load_config", lambda path: {"model_type": "qwen3_5"})
+    monkeypatch.setattr(app, "_session", None)
+    monkeypatch.setattr(app, "_session_path", None, raising=False)
+    app.mlx_session("models/a")
+    app.mlx_session("models/a")
+    app.mlx_session("models/b")
+    assert loads == ["models/a", "models/b"]
+
+
 def test_local_defaults_to_empty_transcription_prompt():
     assert app_module.PROMPT == ""
 

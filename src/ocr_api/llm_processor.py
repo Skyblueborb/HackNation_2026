@@ -146,17 +146,25 @@ class LabLLMProcessor:
 
 
 _processor: LabLLMProcessor | None = None
+_processor_cache: dict[str, LabLLMProcessor] = {}
 _processor_lock = threading.Lock()
 
 
-def get_processor() -> LabLLMProcessor:
-    """Return the shared processor, building it once on first access."""
+def get_processor(model_id: str | None = None) -> LabLLMProcessor:
+    """Return a cached processor for the resolved model id."""
     global _processor
-    if _processor is None:
-        with _processor_lock:
-            if _processor is None:
-                _processor = LabLLMProcessor()
-    return _processor
+    resolved = _resolve_model_id(model_id)
+    cached = _processor_cache.get(resolved)
+    if cached is not None:
+        return cached
+    with _processor_lock:
+        cached = _processor_cache.get(resolved)
+        if cached is None:
+            cached = LabLLMProcessor() if model_id is None else LabLLMProcessor(model_id)
+            _processor_cache[resolved] = cached
+        if resolved == _resolve_model_id(None):
+            _processor = cached
+    return cached
 
 
 class _ProcessorProxy:

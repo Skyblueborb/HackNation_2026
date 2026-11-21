@@ -23,6 +23,7 @@ def _stub_processor_build(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(adapter, "PromptSet", lambda: "prompts")
     monkeypatch.setattr(adapter, "load_all_classes", lambda *a: {"odwolanie": "spec"})
     monkeypatch.setattr(adapter, "_processor", None)
+    monkeypatch.setattr(adapter, "_processor_cache", {}, raising=False)
 
 
 def test_invalid_model_does_not_break_import(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -66,6 +67,24 @@ def test_registry_returns_processor_with_process(
     assert hasattr(processor, "process")
 
 
+def test_get_processor_caches_per_model_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    built = []
+
+    class FakeProcessor:
+        def __init__(self, model_id):
+            built.append(model_id)
+            self.model_id = model_id
+
+    monkeypatch.setattr(adapter, "LabLLMProcessor", FakeProcessor)
+    monkeypatch.setattr(adapter, "_processor_cache", {}, raising=False)
+    a = adapter.get_processor("local-llm")
+    b = adapter.get_processor("local-llm")
+    c = adapter.get_processor("qwen3-8b-l4")
+    assert a is b
+    assert c is not a
+    assert built == ["local-llm", "qwen3-8b-l4"]
+
+
 def test_processor_is_cached(monkeypatch: pytest.MonkeyPatch) -> None:
     _stub_processor_build(monkeypatch)
     first = adapter.get_processor()
@@ -76,6 +95,7 @@ def test_processor_is_cached(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_registry_proxy_defers_build(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(adapter, "_processor", None)
+    monkeypatch.setattr(adapter, "_processor_cache", {}, raising=False)
     proxy = load_llm_processor(SPEC)
     assert hasattr(proxy, "process")
     assert adapter._processor is None
@@ -88,7 +108,14 @@ def test_proxy_delegates_to_built_processor(monkeypatch: pytest.MonkeyPatch) -> 
         def process(self, document):
             return sentinel
 
-    monkeypatch.setattr(adapter, "_processor", Fake())
+    fake = Fake()
+    monkeypatch.setattr(adapter, "_processor", fake)
+    monkeypatch.setattr(
+        adapter,
+        "_processor_cache",
+        {adapter._resolve_model_id(None): fake},
+        raising=False,
+    )
     proxy = load_llm_processor(SPEC)
     assert proxy.process(None) is sentinel
 

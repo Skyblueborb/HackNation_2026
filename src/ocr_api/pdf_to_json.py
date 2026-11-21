@@ -16,6 +16,9 @@ from ocr_common.ports import OCRDocument, OCRPage
 DEFAULT_OCR_MODEL = "models/LightOnOCR-3-0.8B-mlx-8bit"
 DEFAULT_LLM_PROFILE = "local-llm"
 
+# Distinguish "caller omitted processor" from "caller explicitly wants no LLM".
+_UNSET = object()
+
 LLM_HEALTH_TIMEOUT = float(os.environ.get("OCR_LLM_HEALTH_TIMEOUT", "5"))
 # Match LLMClient's default 900s timeout so a long extraction is not cut short.
 REMOTE_TIMEOUT = float(os.environ.get("OCR_REMOTE_TIMEOUT", "900.0"))
@@ -76,15 +79,31 @@ def _load_processor():
 
 
 def run_document(
-    data: bytes, filename: str, model_id: str
+    data: bytes,
+    filename: str,
+    model_id: str,
+    *,
+    backend: Any = None,
+    processor: Any = _UNSET,
+    llm_model: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, float], list[str]]:
     t0 = time.perf_counter()
     images = render_pages(data)
     t1 = time.perf_counter()
 
-    backend = _load_backend()
-    texts = [backend.extract_page(image).strip() for image in images]
+    active_backend = _load_backend() if backend is None else backend
+    texts = [active_backend.extract_page(image).strip() for image in images]
     t2 = time.perf_counter()
+
+    if processor is _UNSET:
+        if llm_model:
+            from ocr_api.llm_processor import get_processor
+
+            active_processor: Any = get_processor(llm_model)
+        else:
+            active_processor = _load_processor()
+    else:
+        active_processor = processor
 
     document = OCRDocument(
         backend="mlx",
@@ -92,22 +111,25 @@ def run_document(
         pages=tuple(OCRPage(number=i, text=text) for i, text in enumerate(texts, 1)),
         filename=filename,
     )
-    llm = _load_processor().process(document)
+    llm = active_processor.process(document) if active_processor is not None else None
     t3 = time.perf_counter()
 
-    if isinstance(llm, dict) and llm.get("rejected"):
+    if llm is None:
+        result: dict[str, Any] = {"raw_text": "\n\n".join(texts)}
+    elif isinstance(llm, dict) and llm.get("rejected"):
         # Document doesn't match any of the three known classes -- empty
         # result, not a guessed extraction.
-        result: dict[str, Any] = {}
+        result = {}
     elif isinstance(llm, dict) and isinstance(llm.get("data"), dict):
         result = llm["data"]
     else:
         result = {"raw_text": "\n\n".join(texts)}
 
+    llm_time = 0.0 if active_processor is None else t3 - t2
     return result, {
         "render": t1 - t0,
         "ocr": t2 - t1,
-        "llm": t3 - t2,
+        "llm": llm_time,
         "total": t3 - t0,
     }, texts
 
