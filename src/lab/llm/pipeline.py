@@ -189,6 +189,41 @@ def map_polish_labels(payload: dict[str, Any], schema: dict[str, Any]) -> dict[s
     return mapped
 
 
+def coerce_list_fields(payload: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
+    """Doprowadź pola-listy do postaci oczekiwanej przez model Pydantic.
+
+    Wymuszany dekoder llama.cpp potrafi zwrócić ``{}`` zamiast ``[]`` dla pustej
+    tablicy obiektów (np. ``Odwolujacy``/``Zamawiajacy``). Bez tej korekty cały
+    wynik LLM jest odrzucany przez walidację i ląduje jako ``raw_text``.
+    Pojedynczy obiekt zostaje owinięty w listę, ``null`` staje się pustą listą.
+    """
+    properties = schema.get("properties", {})
+    out: dict[str, Any] = {}
+    for key, value in payload.items():
+        child = properties.get(key)
+        if child is None:
+            out[key] = value
+            continue
+        types = child.get("type")
+        if isinstance(types, str):
+            types = [types]
+        if "array" in (types or []):
+            if isinstance(value, dict):
+                value = [value] if value else []
+            elif value is None:
+                value = []
+            items = child.get("items", {})
+            if isinstance(value, list) and isinstance(items, dict) and "properties" in items:
+                value = [
+                    coerce_list_fields(item, items) if isinstance(item, dict) else item
+                    for item in value
+                ]
+        elif isinstance(value, dict) and isinstance(child, dict) and "properties" in child:
+            value = coerce_list_fields(value, child)
+        out[key] = value
+    return out
+
+
 def resolve_set_ids(
     experiment: ExperimentConfig,
     data_root: Path,
@@ -247,7 +282,8 @@ def extract_document(
             parsed = json.loads(unwrap_json(response.text))
             if not isinstance(parsed, dict):
                 raise ValueError("model response is not a JSON object")
-            obj = model.model_validate(map_polish_labels(parsed, active_schema)).model_dump()
+            mapped = map_polish_labels(parsed, active_schema)
+            obj = model.model_validate(coerce_list_fields(mapped, active_schema)).model_dump()
         except Exception as exc:
             result.error = f"{type(exc).__name__}: {exc}"[:1500]
             if attempt < retries:
