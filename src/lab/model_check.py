@@ -653,7 +653,7 @@ def write_summary(run_dir: Path, results: list[dict[str, Any]]) -> None:
             f"{row['n_files_evaluated']} | {row['exact_f1_skip']:.4f} | "
             f"{row['fuzzy_f1_skip']:.4f} | {text_f1:.4f} | {strict_f1:.4f} | "
             f"{row['ocr_proxy']['cer_mean']} | {speed} | "
-            f"{report_path} |"
+            f"[report.md]({report_path}) |"
         )
     (run_dir / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 

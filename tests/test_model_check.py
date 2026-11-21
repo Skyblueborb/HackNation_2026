@@ -183,8 +183,9 @@ def test_write_summary_uses_absolute_report_paths(tmp_path):
             }
         ],
     )
+    report = (run_dir / "e2e/text/local-llm/report.md").resolve()
     summary = (run_dir / "summary.md").read_text(encoding="utf-8")
-    assert str((run_dir / "e2e/text/local-llm/report.md").resolve()) in summary
+    assert f"[report.md]({report})" in summary
 
 
 def test_configure_logging_disables_propagation():
