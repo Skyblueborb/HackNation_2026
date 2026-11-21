@@ -1,0 +1,58 @@
+# Pełny stos: FastAPI + SQLite (api) i zbudowany frontend za nginx-em (web).
+#
+#   cp .env.example .env     # ustaw API_TOKEN i API_KEY
+#   docker compose up --build
+#   open http://localhost:3000
+#
+# Baza żyje w named volume `o2j-data` pod /data/o2j.db -- nie w repo i nie
+# w obrazie. Żadne dokumenty ani gold JSON nie są kopiowane do obrazu;
+# dane montuje się w runtime (patrz `volumes` niżej).
+#
+# Domyślnie LLM jest WYŁĄCZONY (OCR_LLM_PROCESSOR puste), więc /api/analyze
+# zwraca sam tekst dokumentu. Żeby włączyć ekstrakcję JSON, uruchom serwer
+# llama.cpp osiągalny z kontenera i ustaw OCR_LLM_PROCESSOR + OCR_LLM_MODEL
+# w .env (na Macu/Windowsie: base_url przez host.docker.internal).
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      API_TOKEN: ${API_TOKEN:-}
+      API_KEY: ${API_KEY:-dev-key}
+      O2J_DB_PATH: /data/o2j.db
+      O2J_CONFIG_PATH: /app/configs
+      O2J_STRICT_VALIDATION: ${O2J_STRICT_VALIDATION:-0}
+      # Frontend chodzi przez nginx na porcie 3000.
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      WEB_OCR_BACKEND: ${WEB_OCR_BACKEND:-text}
+      OCR_LLM_PROCESSOR: ${OCR_LLM_PROCESSOR:-}
+      OCR_LLM_MODEL: ${OCR_LLM_MODEL:-qwen3-8b-l4}
+    volumes:
+      - o2j-data:/data
+    # Port wystawiony tylko lokalnie; w sieci dostęp idzie przez `web`.
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+
+volumes:
+  o2j-data:

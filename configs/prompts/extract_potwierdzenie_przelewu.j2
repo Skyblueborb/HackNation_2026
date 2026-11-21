@@ -1,0 +1,19 @@
+Typ dokumentu: potwierdzenie przelewu bankowego. Kwota to liczba, rachunki to same cyfry bez prefiksu PL, tytuł przelewu przepisz dosłownie z dokumentu.
+Datę operacji i numer transakcji weź z nagłówka potwierdzenia, nie z innych sekcji.
+
+{% if keys is defined and keys %}
+<klucze_json>
+Zwróć JSON używając WYŁĄCZNIE tych kluczy, w tej kolejności, bez żadnych innych kluczy i bez polskich etykiet:
+{{ keys | join('\n') }}
+</klucze_json>
+{% endif %}
+
+<ocr_text>
+{{ text }}
+</ocr_text>
+{% if candidates %}
+<kandydaci_z_tekstu>
+{{ candidates }}
+</kandydaci_z_tekstu>
+Użyj kandydatów tylko wtedy, gdy rzeczywiście występują w tekście dokumentu.
+{% endif %}

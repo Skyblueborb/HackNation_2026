@@ -1,0 +1,56 @@
+# Konfiguracja lokalnych serwerów llama.cpp do manualnego testowania modeli.
+# 16 GB RAM: uruchamiaj JEDEN serwer naraz -- `lab run`, `lab sweep` i
+# `lab models-check` robią to automatycznie (start przed, stop po teście).
+# Flagi `-c`/`-ngl` są dobrane tak, żeby pojedynczy model nie zjadał całej pamięci.
+#
+# Start ręczny (opcjonalny):
+#   lab serve --model qwen3-8b
+#   curl http://localhost:8082/v1/chat/completions \
+#     -H "Content-Type: application/json" \
+#     -d '{"model":"qwen3-8b","messages":[{"role":"user","content":"..."}],"temperature":0}'
+
+qwen3-4b:
+  hf_repo: "Qwen/Qwen3-4B-GGUF:Q4_K_M"
+  base_url: "http://localhost:8081/v1"
+  port: 8081
+  license: Apache-2.0
+  no_think_suffix: "/no_think"
+  server_flags: "-c 8192 -ngl 99 --jinja --parallel 1"
+
+qwen3-8b:
+  hf_repo: "Qwen/Qwen3-8B-GGUF:Q4_K_M"
+  base_url: "http://localhost:8082/v1"
+  port: 8082
+  license: Apache-2.0
+  no_think_suffix: "/no_think"
+  server_flags: "-c 6144 -ngl 24 --jinja --parallel 1"
+
+# Produkcyjny profil LLM na NVIDIA L4 (Ubuntu Noble): pełne offloadowanie
+# warstw na GPU i flash attention. Używany przez OCR_LLM_MODEL=qwen3-8b-l4.
+qwen3-8b-l4:
+  hf_repo: "Qwen/Qwen3-8B-GGUF:Q4_K_M"
+  base_url: "http://localhost:8082/v1"
+  port: 8082
+  license: Apache-2.0
+  no_think_suffix: "/no_think"
+  server_flags: "-c 8192 -ngl 99 --jinja --parallel 1 -fa on"
+
+# Lokalny profil LLM do testów na Macu (Metal), analogiczny do local-ai dla OCR.
+# Na CPU zmień flagę na -ngl 0 (`local-llm serve --cpu`).
+local-llm:
+  hf_repo: "Qwen/Qwen3-4B-GGUF:Q4_K_M"
+  base_url: "http://localhost:8081/v1"
+  port: 8081
+  license: Apache-2.0
+  no_think_suffix: "/no_think"
+  server_flags: "-c 8192 -ngl 99 --jinja --parallel 1"
+
+bielik-11b:
+  hf_repo: "speakleash/Bielik-11B-v3.1-Instruct-GGUF:Q4_K_M"
+  base_url: "http://localhost:8083/v1"
+  port: 8083
+  license: "Apache-2.0 + Terms of Use"
+  server_flags: "-c 6144 -ngl 99 --jinja --parallel 1"
+  structured_output: false
+  params:
+    max_tokens: 1024
