@@ -1,0 +1,195 @@
+id: odwolanie
+title: Odwołanie do KIO
+pdf_stem: odwolanie
+gold_stem: odwolanie
+
+fields:
+  # --- OdwolanieKIO -------------------------------------------------------
+  - path: OdwolanieKIO.data
+    kind: string
+    nullable: true
+    normalizer: date_iso
+    description: "Data z nagłówka pierwszej strony, z linii: 'DD.MM.RRRR'."
+
+  - path: OdwolanieKIO.czynnosc_dzien
+    kind: string
+    nullable: true
+    normalizer: date_iso
+    description: >-
+      Data czynności uruchamiającej bieg terminu odwołania dla pierwszego
+      zarzutu (ISO YYYY-MM-DD). Jeśli brak wiarygodnej daty dla pierwszego
+      zarzutu, zwróć null.
+
+  - path: OdwolanieKIO.czynnosc_powod_id
+    kind: integer
+    nullable: true
+    normalizer: enum_int
+    enum: czynnosc_powod
+    enum_role: key
+    description: >-
+      Identyfikator powodu odwołania jako liczba całkowita 1-11 (bez zera
+      wiodącego), ustalana WYŁĄCZNIE na podstawie pierwszego zarzutu.
+
+  - path: OdwolanieKIO.czynnosc_opis
+    kind: string
+    nullable: true
+    normalizer: text
+    enum: czynnosc_powod
+    enum_role: label
+    derived_from: OdwolanieKIO.czynnosc_powod_id
+    description: >-
+      Kanoniczny opis zaskarżonej czynności zgodny 1:1 z czynnosc_powod_id i
+      ustalany WYŁĄCZNIE z pierwszego zarzutu.
+
+  - path: OdwolanieKIO.miejscowosc
+    kind: string
+    nullable: true
+    normalizer: text
+    description: >-
+      Miejscowość z nagłówka pierwszej strony, z linii typu: 'X, dnia ...'
+      albo 'X DD.MM.RRRR'.
+
+  # --- Odwolujacy[] --------------------------------------------------------
+  - path: Odwolujacy[]
+    kind: object
+    description: "Lista podmiotów wnoszących odwołanie."
+    list_spec:
+      min: 1
+      max: 1
+      match_on: [nazwa, nip, krs]
+
+  - path: Odwolujacy[].krs
+    kind: string
+    nullable: true
+    normalizer: digits
+    description: >-
+      KRS Odwołującego lub Lidera konsorcjum podmiotów Odwołujących (jeśli
+      występuje).
+
+  - path: Odwolujacy[].nazwa
+    kind: string
+    nullable: true
+    normalizer: text
+    description: >-
+      Pełna nazwa podmiotu opisanego w tekście jako Odwołujący (sekcja
+      'Odwołujący' / wykonawca wnoszący odwołanie). Jeśli występuje
+      konsorcjum, podaj nazwę Lidera konsorcjum.
+
+  - path: Odwolujacy[].nip
+    kind: string
+    nullable: true
+    normalizer: digits
+    description: >-
+      NIP Odwołującego lub Lidera konsorcjum podmiotów Odwołujących (jeśli
+      występuje).
+
+  - path: Odwolujacy[].regon
+    kind: string
+    nullable: true
+    normalizer: digits
+    description: >-
+      REGON Odwołującego lub Lidera konsorcjum podmiotów Odwołujących (jeśli
+      występuje).
+
+  - path: Odwolujacy[].przez-pelnomocnika
+    kind: integer
+    nullable: true
+    normalizer: enum_int
+    description: "1 - tak, 0 - nie"
+
+  - path: Odwolujacy[].pelnomocnik.imie_nazwisko
+    kind: string
+    nullable: true
+    normalizer: name
+    description: "Imię i nazwisko jeśli występuje pełnomocnik odwołującego."
+
+  - path: Odwolujacy[].pelnomocnik.nazwa
+    kind: string
+    nullable: true
+    normalizer: text
+    description: "Nazwa podmiotu zatrudniającego pełnomocnika."
+
+  - path: Odwolujacy[].pelnomocnik.mail
+    kind: string
+    nullable: true
+    normalizer: text
+    description: "Adres email kontaktowy do pełnomocnika."
+
+  # --- Zamawiajacy[] -------------------------------------------------------
+  - path: Zamawiajacy[]
+    kind: object
+    description: "Lista podmiotów zamawiających."
+    list_spec:
+      min: 1
+      max: null
+      match_on: [nazwa, nip, krs]
+
+  - path: Zamawiajacy[].krs
+    kind: string
+    nullable: true
+    normalizer: digits
+    description: "KRS Zamawiającego (jeśli jawnie podany przy Zamawiającym)."
+
+  - path: Zamawiajacy[].nazwa
+    kind: string
+    nullable: true
+    normalizer: text
+    description: >-
+      Pełna nazwa podmiotu opisanego w tekście jako Zamawiający (sekcja
+      'Zamawiający').
+
+  - path: Zamawiajacy[].nip
+    kind: string
+    nullable: true
+    normalizer: digits
+    description: "NIP Zamawiającego (jeśli jawnie podany przy Zamawiającym)."
+
+  - path: Zamawiajacy[].regon
+    kind: string
+    nullable: true
+    normalizer: digits
+    description: "REGON Zamawiającego (jeśli jawnie podany przy Zamawiającym)."
+
+  - path: Zamawiajacy[].prowadzacy_postepowanie
+    kind: integer
+    nullable: true
+    normalizer: enum_int
+    description: >-
+      null - jeśli brak informacji, 1 - jeśli występuje więcej niż jeden
+      zamawiający i jest oznaczony jako "prowadzący postępowanie"/"lider
+      postępowania" lub 0 - jeśli występuje więcej niż jeden zamawiający i nie
+      został wskazany jako prowadzący postępowanie lub lider postępowania.
+
+  # --- ZamowieniePubliczne -------------------------------------------------
+  - path: ZamowieniePubliczne.numer_bzp
+    kind: string
+    nullable: true
+    normalizer: bzp
+    description: >-
+      Numer ogłoszenia w BZP (jeśli występuje). Format: 'YYYY/BZP ########'
+      (opcjonalnie '/##' dla korekt), bez spacji po normalizacji. NIE wpisuj
+      tu numerów TED.
+
+  - path: ZamowieniePubliczne.numer_postepowania
+    kind: string
+    nullable: true
+    normalizer: text
+    description: >-
+      Numer referencyjny/nr postępowania/numer wewnętrzny (ID po etykiecie),
+      np. 'ZP.039.2025', 'DZP.260.11.2025', 'V.ROZ.2710.125.2025',
+      'ZSCKR/822/2025'.
+
+  - path: ZamowieniePubliczne.numer_ted
+    kind: string
+    nullable: true
+    normalizer: ted
+    description: >-
+      Numer TED (jeśli występuje). Zwykle format: 'NNNNNN-YYYY' (np.
+      '363730-2025'). Może też wystąpić jako 'YYYY/S ###-NNNNNN' — zapisz
+      jako 'NNNNNN-YYYY'.
+
+  - path: ZamowieniePubliczne.tytul
+    kind: string
+    nullable: true
+    normalizer: text
+    description: "Tytuł zamówienia lub postępowania, jeśli występuje w dokumencie."

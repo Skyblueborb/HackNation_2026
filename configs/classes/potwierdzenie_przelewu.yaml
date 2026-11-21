@@ -1,0 +1,41 @@
+id: potwierdzenie_przelewu
+title: Potwierdzenie przelewu
+pdf_stem: potwierdzenie_przelewu
+gold_stem: przelew
+
+fields:
+  - path: przelew_bankowy.data_operacji
+    kind: string
+    nullable: true
+    normalizer: date_iso
+    description: "Data wykonania operacji/przelewu."
+
+  - path: przelew_bankowy.kwota
+    kind: float
+    nullable: true
+    normalizer: money
+    description: "Kwota przelewu."
+
+  - path: przelew_bankowy.na_rachunek
+    kind: string
+    nullable: true
+    normalizer: nrb26
+    description: "Numer rachunku odbiorcy (NRB, 26 cyfr, bez prefiksu PL)."
+
+  - path: przelew_bankowy.numer_transakcji
+    kind: string
+    nullable: true
+    normalizer: text
+    description: "Numer transakcji/operacji, jeśli występuje."
+
+  - path: przelew_bankowy.tytul
+    kind: string
+    nullable: true
+    normalizer: text
+    description: "Tytuł przelewu."
+
+  - path: przelew_bankowy.z_rachunku
+    kind: string
+    nullable: true
+    normalizer: nrb26
+    description: "Numer rachunku nadawcy (NRB, 26 cyfr, bez prefiksu PL)."

@@ -1,0 +1,84 @@
+id: pelnomocnictwo
+title: Pełnomocnictwo
+pdf_stem: pelnomocnictwo
+gold_stem: pelnomocnictwo
+
+fields:
+  # --- mocodawca[] ---------------------------------------------------------
+  - path: mocodawca[]
+    kind: object
+    description: >-
+      Mocodawca – podmiot udzielający pełnomocnictwa. Może być więcej niż 1
+      (konsorcjum wspólnie).
+    list_spec:
+      min: 1
+      max: null
+      match_on: [nazwa, nip, krs]
+
+  - path: mocodawca[].data.imie_nazwisko
+    kind: string
+    nullable: true
+    normalizer: name
+    description: >-
+      Imię i nazwisko mocodawcy, jeśli jest osobą fizyczną. W przypadku
+      osoby prawnej: null.
+
+  - path: mocodawca[].data.krs
+    kind: string
+    nullable: true
+    normalizer: digits
+    description: "Numer KRS mocodawcy będącego osobą prawną."
+
+  - path: mocodawca[].data.nazwa
+    kind: string
+    nullable: true
+    normalizer: text
+    description: "Pełna nazwa mocodawcy."
+
+  - path: mocodawca[].data.nip
+    kind: string
+    nullable: true
+    normalizer: digits
+    description: "Numer NIP mocodawcy."
+
+  - path: mocodawca[].data.typ
+    kind: string
+    nullable: true
+    normalizer: text
+    enum_values: ["osoba_prawna", "osoba_fizyczna"]
+    description: "Typ mocodawcy: 'osoba_prawna' lub 'osoba_fizyczna'."
+
+  - path: mocodawca[].podpisujacy[]
+    kind: object
+    description: "Osoby podpisujące w imieniu mocodawcy."
+    list_spec:
+      min: 0
+      max: null
+      match_on: [imie_nazwisko]
+
+  - path: mocodawca[].podpisujacy[].imie_nazwisko
+    kind: string
+    nullable: true
+    normalizer: name
+    description: "Imię i nazwisko osoby podpisującej w imieniu mocodawcy."
+
+  # --- pelnomocnicy[] --------------------------------------------------------
+  - path: pelnomocnicy[]
+    kind: object
+    description: "Osoby otrzymujące pełnomocnictwo."
+    list_spec:
+      min: 0
+      max: null
+      match_on: [imie_nazwisko]
+
+  - path: pelnomocnicy[].imie_nazwisko
+    kind: string
+    nullable: true
+    normalizer: name
+    description: "Imię i nazwisko pełnomocnika w mianowniku."
+
+  - path: pelnomocnicy[].pesel
+    kind: string
+    nullable: true
+    normalizer: digits
+    description: "Numer PESEL pełnomocnika, jeśli występuje."

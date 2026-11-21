@@ -1,0 +1,27 @@
+# Licencje komponentów
+
+> Uwaga: licencje oznaczone `(do potwierdzenia)` muszą zostać zweryfikowane w pliku
+> LICENSE danego pakietu przed oddaniem projektu.
+
+| Komponent | Wersja | Licencja | Rola | Zweryfikowano |
+|---|---|---|---|---|
+| pypdfium2 | latest | Apache-2.0 / BSD-3 (do potwierdzenia) | Ekstrakcja tekstu/renderowanie PDF | 2026-11-21 |
+| pdfplumber | latest | MIT (do potwierdzenia) | Ekstrakcja tekstu/tabel z PDF | 2026-11-21 |
+| pydantic | >=2.9 | MIT | Schematy danych | 2026-11-21 |
+| PyYAML | latest | MIT | Parsowanie konfiguracji YAML | 2026-11-21 |
+| rapidfuzz | latest | MIT | Rozmyte porównania tekstu / F1 | 2026-11-21 |
+| typer | latest | MIT | CLI | 2026-11-21 |
+| jinja2 | latest | BSD-3 (do potwierdzenia) | Szablony promptów/raportów | 2026-11-21 |
+| openai | latest | Apache-2.0 | Klient HTTP do llama-server (OpenAI-compatible API) | 2026-11-21 |
+| Pillow | latest | MIT-CMU (do potwierdzenia) | Operacje na obrazach | 2026-11-21 |
+| jiwer | latest | Apache-2.0 (do potwierdzenia) | Metryki CER/WER dla OCR | 2026-11-21 |
+| pandas | latest | BSD-3 | Tabele wyników eksperymentów | 2026-11-21 |
+| matplotlib | latest | licencja matplotlib (BSD-style) (do potwierdzenia) | Wykresy | 2026-11-21 |
+| numpy | >=2.1 | BSD-3 (do potwierdzenia) | Obliczenia numeryczne | 2026-11-21 |
+| opencv-python-headless | latest | Apache-2.0 (do potwierdzenia) | Przetwarzanie obrazu dla OCR | 2026-11-21 |
+| psutil | latest | BSD-3 (do potwierdzenia) | Pomiar zasobów (RAM/CPU) podczas runów | 2026-11-21 |
+| pytest | latest | MIT | Testy jednostkowe | 2026-11-21 |
+| tesseract | 5.x | Apache-2.0 | Silnik OCR | 2026-11-21 |
+| tessdata_best | latest | Apache-2.0 | Modele języka `pol` dla Tesseract | 2026-11-21 |
+| poppler | system | GPL-2 (tylko narzędzia dev, do potwierdzenia) | Narzędzia PDF (dev-only, nie wdrażane produkcyjnie) | 2026-11-21 |
+| llama.cpp | latest | MIT | Lokalny serwer modeli LLM (`llama-server`) | 2026-11-21 |
