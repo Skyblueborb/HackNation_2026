@@ -110,4 +110,5 @@ async def analyze(file: UploadFile = File(...)) -> dict:
         backend="mlx",
         model=MODEL_ID,
         processor=PROCESSOR,
+        filename=file.filename,
     )

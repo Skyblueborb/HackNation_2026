@@ -19,6 +19,7 @@ class OCRDocument:
     backend: str
     model: str
     pages: tuple[OCRPage, ...]
+    filename: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {

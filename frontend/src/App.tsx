@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { extractZipFiles, type ExtractedFile } from './utils/zip';
-import { ingestDocument, listDocuments, getClientToken } from './api';
+import { analyzeDocument, ingestDocument, listDocuments, getClientToken } from './api';
 import { hydrateForms } from './hydrate';
 
 interface OdwolanieKioFields {
@@ -76,13 +76,30 @@ interface PrzelewFormData {
   przelew_bankowy: PrzelewBankowyFields;
 }
 
+type DocClass = 'odwolanie' | 'pelnomocnictwo' | 'przelew';
+
+interface FormBundle {
+  odwolanie: OdwolanieFormData;
+  pelnomocnictwo: PelnomocnictwoFormData;
+  przelew: PrzelewFormData;
+}
+
 interface DocumentSlot {
-  id: 'odwolanie' | 'pelnomocnictwo' | 'przelew';
+  id: string;              // client_doc_id — unikalny dla jednego pliku z ZIP-a
+  doc_class: DocClass;     // typ tego konkretnego pliku
   title: string;
   categoryLabel: string;
   defaultFilename: string;
+  sourceName: string;
   file?: ExtractedFile;
+  data: FormBundle;        // dane dla każdego typu — zmiana typu nic nie kasuje
 }
+
+const CLASS_LABEL: Record<DocClass, string> = {
+  odwolanie: 'Odwołanie',
+  pelnomocnictwo: 'Pełnomocnictwo',
+  przelew: 'Przelew',
+};
 
 const CZYNNOSC_POWODY = [
   { id: '', label: '-wybierz-' },
@@ -99,8 +116,139 @@ const CZYNNOSC_POWODY = [
   { id: '11', label: '11 - Opis przedmiotu zamówienia (OPZ)' },
 ];
 
+function newDocId(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random()}`;
+}
+
+function emptyForms(): FormBundle {
+  return {
+    odwolanie: {
+      OdwolanieKIO: { data: '', czynnosc_dzien: '', czynnosc_powod_id: '', czynnosc_opis: '', miejscowosc: '' },
+      Odwolujacy: { krs: '', nazwa: '', nip: '', regon: '', przez_pelnomocnika: '1', pelnomocnik_imie_nazwisko: '', pelnomocnik_nazwa: '', pelnomocnik_mail: '' },
+      Zamawiajacy: { krs: '', nazwa: '', nip: '', regon: '', prowadzacy_postepowanie: 'null' },
+      ZamowieniePubliczne: { numer_bzp: '', numer_postepowania: '', numer_ted: '', tytul: '' },
+    },
+    pelnomocnictwo: {
+      mocodawca: { imie_nazwisko: '', krs: '', nazwa: '', nip: '', typ: 'osoba_prawna', podpisujacy_imie_nazwisko: '' },
+      pelnomocnicy: { imie_nazwisko: '', pesel: '' },
+    },
+    przelew: {
+      przelew_bankowy: { data_operacji: '', kwota: '', na_rachunek: '60 1010 1010 0081 3622 3100 0000', numer_transakcji: '', tytul: '', z_rachunku: '' },
+    },
+  };
+}
+
+function makeDoc(docClass: DocClass, n: number, file?: ExtractedFile, sourceName?: string): DocumentSlot {
+  const name = sourceName ?? `${docClass}.pdf`;
+  return {
+    id: newDocId(),
+    doc_class: docClass,
+    title: `${CLASS_LABEL[docClass]} #${n}`,
+    categoryLabel: CLASS_LABEL[docClass],
+    defaultFilename: name,
+    sourceName: name,
+    file,
+    data: emptyForms(),
+  };
+}
+
+function defaultDocs(): DocumentSlot[] {
+  return [makeDoc('odwolanie', 1), makeDoc('pelnomocnictwo', 1), makeDoc('przelew', 1)];
+}
+
+/** Klasyfikacja pliku po nazwie — każdy plik to osobny byt. */
+function classifyName(name: string): DocClass {
+  const n = name.toLowerCase();
+  if (n.includes('odwol') || n.includes('appeal') || n.includes('odwoł')) return 'odwolanie';
+  if (n.includes('pelnom') || n.includes('pełnom') || n.includes('power')) return 'pelnomocnictwo';
+  if (n.includes('przel') || n.includes('przelew') || n.includes('trans') || n.includes('platn')) return 'przelew';
+  return 'odwolanie';
+}
+
+/** Czysta funkcja: zwraca kanoniczny JSON dla dowolnego dokumentu. */
+function buildCanonical(docClass: DocClass, data: FormBundle) {
+  if (docClass === 'odwolanie') {
+    const { OdwolanieKIO, Odwolujacy, Zamawiajacy, ZamowieniePubliczne } = data.odwolanie;
+    return {
+      OdwolanieKIO: {
+        data: OdwolanieKIO.data || null,
+        czynnosc_dzien: OdwolanieKIO.czynnosc_dzien || null,
+        czynnosc_powod_id: OdwolanieKIO.czynnosc_powod_id ? parseInt(OdwolanieKIO.czynnosc_powod_id) : null,
+        czynnosc_opis: OdwolanieKIO.czynnosc_opis || null,
+        miejscowosc: OdwolanieKIO.miejscowosc || null,
+      },
+      Odwolujacy: [{
+        krs: Odwolujacy.krs || null,
+        nazwa: Odwolujacy.nazwa || null,
+        nip: Odwolujacy.nip || null,
+        regon: Odwolujacy.regon || null,
+        'przez-pelnomocnika': Odwolujacy.przez_pelnomocnika === '1' ? 1 : 0,
+        pelnomocnik: Odwolujacy.pelnomocnik_imie_nazwisko
+          ? {
+              imie_nazwisko: Odwolujacy.pelnomocnik_imie_nazwisko,
+              nazwa: Odwolujacy.pelnomocnik_nazwa || null,
+              mail: Odwolujacy.pelnomocnik_mail || null,
+            }
+          : null,
+      }],
+      Zamawiajacy: [{
+        krs: Zamawiajacy.krs || null,
+        nazwa: Zamawiajacy.nazwa || null,
+        nip: Zamawiajacy.nip || null,
+        regon: Zamawiajacy.regon || null,
+        prowadzacy_postepowanie:
+          Zamawiajacy.prowadzacy_postepowanie === '1'
+            ? 1
+            : Zamawiajacy.prowadzacy_postepowanie === '0'
+            ? 0
+            : null,
+      }],
+      ZamowieniePubliczne: {
+        numer_bzp: ZamowieniePubliczne.numer_bzp || null,
+        numer_postepowania: ZamowieniePubliczne.numer_postepowania || null,
+        numer_ted: ZamowieniePubliczne.numer_ted || null,
+        tytul: ZamowieniePubliczne.tytul || null,
+      },
+    };
+  }
+  if (docClass === 'pelnomocnictwo') {
+    const { mocodawca, pelnomocnicy } = data.pelnomocnictwo;
+    return {
+      mocodawca: [{
+        data: {
+          imie_nazwisko: mocodawca.typ === 'osoba_fizyczna' ? (mocodawca.imie_nazwisko || null) : null,
+          krs: mocodawca.krs || null,
+          nazwa: mocodawca.nazwa || null,
+          nip: mocodawca.nip || null,
+          typ: mocodawca.typ,
+        },
+        podpisujacy: mocodawca.podpisujacy_imie_nazwisko
+          ? [{ imie_nazwisko: mocodawca.podpisujacy_imie_nazwisko }]
+          : [],
+      }],
+      pelnomocnicy: [{
+        imie_nazwisko: pelnomocnicy.imie_nazwisko || null,
+        pesel: pelnomocnicy.pesel ? (isNaN(Number(pelnomocnicy.pesel)) ? pelnomocnicy.pesel : Number(pelnomocnicy.pesel)) : null,
+      }],
+    };
+  }
+  const { przelew_bankowy } = data.przelew;
+  return {
+    przelew_bankowy: {
+      data_operacji: przelew_bankowy.data_operacji || null,
+      kwota: przelew_bankowy.kwota ? parseFloat(przelew_bankowy.kwota.replace(',', '.')) : null,
+      na_rachunek: przelew_bankowy.na_rachunek.replace(/\s+/g, '') || null,
+      numer_transakcji: przelew_bankowy.numer_transakcji || null,
+      tytul: przelew_bankowy.tytul || null,
+      z_rachunku: przelew_bankowy.z_rachunku.replace(/\s+/g, '') || null,
+    },
+  };
+}
+
 export default function App() {
-  const [stage, setStage] = useState<'upload' | 'loading' | 'splitscreen'>('upload');
+  const [stage, setStage] = useState<'upload' | 'loading' | 'splitscreen' | 'done'>('upload');
   const [selectedZip, setSelectedZip] = useState<File | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -109,26 +257,7 @@ export default function App() {
   const [loadingStep, setLoadingStep] = useState(1);
 
   const [currentDocIndex, setCurrentDocIndex] = useState(0);
-  const [docSlots, setDocSlots] = useState<DocumentSlot[]>([
-    {
-      id: 'odwolanie',
-      title: '1. Odwołanie do KIO',
-      categoryLabel: 'Odwołanie',
-      defaultFilename: 'odwolanie.pdf',
-    },
-    {
-      id: 'pelnomocnictwo',
-      title: '2. Pełnomocnictwo',
-      categoryLabel: 'Pełnomocnictwo',
-      defaultFilename: 'pelnomocnictwo.pdf',
-    },
-    {
-      id: 'przelew',
-      title: '3. Potwierdzenie przelewu',
-      categoryLabel: 'Przelew',
-      defaultFilename: 'przelew.pdf',
-    },
-  ]);
+  const [docSlots, setDocSlots] = useState<DocumentSlot[]>(defaultDocs);
 
   // Formularze – domyślnie puste, gotowe do wpisywania i poprawy
   const [odwolanieData, setOdwolanieData] = useState<OdwolanieFormData>({
@@ -219,7 +348,7 @@ export default function App() {
 
   // Wypełnienie przykładowymi danymi ze screenshotów z oczekiwane-json
   const fillSampleGoldData = () => {
-    if (currentDocIndex === 0) {
+    if (activeDoc.doc_class === 'odwolanie') {
       setOdwolanieData({
         OdwolanieKIO: {
           data: '13.10.2025',
@@ -252,7 +381,7 @@ export default function App() {
           tytul: 'Wykonanie robót budowlanych oraz dostawa i montaż wyposażenia w ramach zadania, polegającego na przebudowie i rozbudowie Filharmonii Pomorskiej w Bydgoszczy',
         },
       });
-    } else if (currentDocIndex === 1) {
+    } else if (activeDoc.doc_class === 'pelnomocnictwo') {
       setPelnomocnictwoData({
         mocodawca: {
           typ: 'osoba_prawna',
@@ -284,14 +413,14 @@ export default function App() {
   };
 
   const clearCurrentData = () => {
-    if (currentDocIndex === 0) {
+    if (activeDoc.doc_class === 'odwolanie') {
       setOdwolanieData({
         OdwolanieKIO: { data: '', czynnosc_dzien: '', czynnosc_powod_id: '', czynnosc_opis: '', miejscowosc: '' },
         Odwolujacy: { krs: '', nazwa: '', nip: '', regon: '', przez_pelnomocnika: '1', pelnomocnik_imie_nazwisko: '', pelnomocnik_nazwa: '', pelnomocnik_mail: '' },
         Zamawiajacy: { krs: '', nazwa: '', nip: '', regon: '', prowadzacy_postepowanie: 'null' },
         ZamowieniePubliczne: { numer_bzp: '', numer_postepowania: '', numer_ted: '', tytul: '' },
       });
-    } else if (currentDocIndex === 1) {
+    } else if (activeDoc.doc_class === 'pelnomocnictwo') {
       setPelnomocnictwoData({
         mocodawca: { typ: 'osoba_prawna', nazwa: '', nip: '', krs: '', imie_nazwisko: '', podpisujacy_imie_nazwisko: '' },
         pelnomocnicy: { imie_nazwisko: '', pesel: '' },
@@ -310,11 +439,30 @@ export default function App() {
       if (docs.length === 0) {
         setSaveNotification('W bazie nie ma jeszcze żadnych wyników.');
       } else {
-        const forms = hydrateForms(docs);
-        if (forms.odwolanie) setOdwolanieData(forms.odwolanie);
-        if (forms.pelnomocnictwo) setPelnomocnictwoData(forms.pelnomocnictwo);
-        if (forms.przelew) setPrzelewData(forms.przelew);
-        setSaveNotification(`Wczytano ${docs.length} dokument(ów) z bazy danych.`);
+        const empty = emptyForms();
+        const mapped: DocumentSlot[] = docs.map((d, i) => {
+          const forms = hydrateForms([d]);
+          const cls = d.doc_class;
+          return {
+            id: d.client_doc_id ?? `backend-${i}`,
+            doc_class: cls,
+            title: `${CLASS_LABEL[cls]} #${i + 1}`,
+            categoryLabel: CLASS_LABEL[cls],
+            defaultFilename: d.source_name ?? `${cls}.pdf`,
+            sourceName: d.source_name ?? '',
+            data: {
+              odwolanie: forms.odwolanie ?? empty.odwolanie,
+              pelnomocnictwo: forms.pelnomocnictwo ?? empty.pelnomocnictwo,
+              przelew: forms.przelew ?? empty.przelew,
+            },
+          };
+        });
+        setDocSlots(mapped);
+        setCurrentDocIndex(0);
+        setOdwolanieData(mapped[0].data.odwolanie);
+        setPelnomocnictwoData(mapped[0].data.pelnomocnictwo);
+        setPrzelewData(mapped[0].data.przelew);
+        setSaveNotification(`Wczytano ${docs.length} plików z bazy danych.`);
       }
     } catch {
       setSaveNotification('Nie udało się połączyć z bazą danych (backend może być wyłączony).');
@@ -352,18 +500,22 @@ export default function App() {
       console.warn('Błąd odczytu ZIP:', e);
     }
 
-    const newSlots = [...docSlots];
-    if (extracted.length > 0) {
-      const pdfs = extracted.filter((f) => f.name.toLowerCase().endsWith('.pdf'));
-      const odw = pdfs.find((f) => f.name.toLowerCase().includes('odwol') || f.name.toLowerCase().includes('appeal'));
-      const pel = pdfs.find((f) => f.name.toLowerCase().includes('pelnom') || f.name.toLowerCase().includes('power'));
-      const prz = pdfs.find((f) => f.name.toLowerCase().includes('przel') || f.name.toLowerCase().includes('trans'));
+    // Każdy PDF to osobny dokument — może być 3 przelewów, 2 odwołań i 0 pełnomocnictw.
+    const pdfs = extracted.filter((f) => f.name.toLowerCase().endsWith('.pdf'));
+    const counters: Record<DocClass, number> = { odwolanie: 0, pelnomocnictwo: 0, przelew: 0 };
+    const newSlots: DocumentSlot[] = pdfs.length > 0
+      ? pdfs.map((f) => {
+          const cls = classifyName(f.name);
+          counters[cls]++;
+          return makeDoc(cls, counters[cls], f, f.name);
+        })
+      : defaultDocs();  // archiwum testowe bez PDF-ów — zostawiamy 3 puste formularze
 
-      newSlots[0].file = odw || pdfs[0];
-      newSlots[1].file = pel || pdfs[1];
-      newSlots[2].file = prz || pdfs[2];
-      setDocSlots(newSlots);
-    }
+    setDocSlots(newSlots);
+    setCurrentDocIndex(0);
+    setOdwolanieData(newSlots[0].data.odwolanie);
+    setPelnomocnictwoData(newSlots[0].data.pelnomocnictwo);
+    setPrzelewData(newSlots[0].data.przelew);
 
     setTimeout(() => {
       setLoadingProgress(40);
@@ -383,29 +535,116 @@ export default function App() {
     setTimeout(() => {
       setStage('splitscreen');
     }, 1800);
-  };
 
-  const goToNextDoc = () => {
-    if (currentDocIndex < docSlots.length - 1) {
-      setCurrentDocIndex((prev) => prev + 1);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Wyślij skany do backendu: OCR + LLM + zapis do SQLite.
+    // Demo działa dalej, jeśli backend nie jest uruchomiony.
+    try {
+      const token = getClientToken();
+      const results = await Promise.all(
+        newSlots.map(async (slot) => {
+          if (!slot.file) return null;
+          try {
+            return await analyzeDocument(
+              slot.file.blob,
+              slot.file.name,
+              token,
+              slot.doc_class,
+              slot.id,
+            );
+          } catch (e) {
+            console.warn(`Analiza ${slot.id} nie udała się:`, e);
+            return null;
+          }
+        }),
+      );
+      const empty = emptyForms();
+      let changed = false;
+      results.forEach((result, i) => {
+        if (!result || !newSlots[i]) return;
+        const forms = hydrateForms([
+          { doc_class: result.doc_class, canonical_json: result.canonical_json },
+        ]);
+        newSlots[i].doc_class = result.doc_class as DocClass;
+        newSlots[i].data = {
+          odwolanie: forms.odwolanie ?? empty.odwolanie,
+          pelnomocnictwo: forms.pelnomocnictwo ?? empty.pelnomocnictwo,
+          przelew: forms.przelew ?? empty.przelew,
+        };
+        changed = true;
+      });
+      if (changed) {
+        setDocSlots([...newSlots]);
+        const d = newSlots[0];
+        setOdwolanieData(d.data.odwolanie);
+        setPelnomocnictwoData(d.data.pelnomocnictwo);
+        setPrzelewData(d.data.przelew);
+      }
+    } catch (e) {
+      console.warn('Backend analizy niedostępny:', e);
     }
   };
 
-  const goToPrevDoc = () => {
-    if (currentDocIndex > 0) {
-      setCurrentDocIndex((prev) => prev - 1);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+  // Zapisz dane aktywnego formularza do listy dokumentów i przełącz na inny.
+  // Dane każdego pliku są niezależne — przełączanie nic nie czyści.
+  const commitActiveToDocs = (source: DocumentSlot[] = docSlots): DocumentSlot[] => {
+    const copy = [...source];
+    const i = currentDocIndex;
+    if (copy[i]) {
+      copy[i] = {
+        ...copy[i],
+        data: {
+          odwolanie: odwolanieData,
+          pelnomocnictwo: pelnomocnictwoData,
+          przelew: przelewData,
+        },
+      };
     }
+    return copy;
+  };
+
+  const selectDoc = (index: number) => {
+    if (index < 0 || index >= docSlots.length || index === currentDocIndex) return;
+    const updated = commitActiveToDocs();
+    setDocSlots(updated);
+    const d = updated[index];
+    setOdwolanieData(d.data.odwolanie);
+    setPelnomocnictwoData(d.data.pelnomocnictwo);
+    setPrzelewData(d.data.przelew);
+    setCurrentDocIndex(index);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const goToNextDoc = () => selectDoc(currentDocIndex + 1);
+  const goToPrevDoc = () => selectDoc(currentDocIndex - 1);
+
+  // Zmiana typu aktywnego pliku. Dane wprowadzone dla poprzedniego typu
+  // zostają w pamięci dokumentu — wracają po przełączeniu z powrotem.
+  const changeDocClass = (next: DocClass) => {
+    const updated = commitActiveToDocs();
+    const i = currentDocIndex;
+    if (!updated[i] || updated[i].doc_class === next) return;
+    const counters: Record<DocClass, number> = { odwolanie: 0, pelnomocnictwo: 0, przelew: 0 };
+    updated.slice(0, i).forEach((d) => { counters[d.doc_class]++; });
+    updated[i] = {
+      ...updated[i],
+      doc_class: next,
+      title: `${CLASS_LABEL[next]} #${counters[next] + 1}`,
+      categoryLabel: CLASS_LABEL[next],
+    };
+    setDocSlots(updated);
+    setOdwolanieData(updated[i].data.odwolanie);
+    setPelnomocnictwoData(updated[i].data.pelnomocnictwo);
+    setPrzelewData(updated[i].data.przelew);
   };
 
   const handleSaveData = async () => {
     try {
       const result = await ingestDocument({
         client_token: getClientToken(),
-        doc_class: activeDoc.id,
+        client_doc_id: activeDoc.id,
+        doc_class: activeDoc.doc_class,
         canonical_json: getCanonicalJson(),
-        source_name: activeDoc.file?.name ?? activeDoc.defaultFilename,
+        source_name: activeDoc.sourceName,
       });
       setSaveNotification(
         result.correction_session_id
@@ -418,120 +657,71 @@ export default function App() {
     setTimeout(() => setSaveNotification(null), 4000);
   };
 
-  // Generowanie kanonicznego JSON zgodnego 1:1 z oczekiwane-json
-  const getCanonicalJson = (index: number = currentDocIndex) => {
-    if (index === 0) {
-      const { OdwolanieKIO, Odwolujacy, Zamawiajacy, ZamowieniePubliczne } = odwolanieData;
-      return {
-        OdwolanieKIO: {
-          data: OdwolanieKIO.data || null,
-          czynnosc_dzien: OdwolanieKIO.czynnosc_dzien || null,
-          czynnosc_powod_id: OdwolanieKIO.czynnosc_powod_id ? parseInt(OdwolanieKIO.czynnosc_powod_id) : null,
-          czynnosc_opis: OdwolanieKIO.czynnosc_opis || null,
-          miejscowosc: OdwolanieKIO.miejscowosc || null,
-        },
-        Odwolujacy: [
-          {
-            krs: Odwolujacy.krs || null,
-            nazwa: Odwolujacy.nazwa || null,
-            nip: Odwolujacy.nip || null,
-            regon: Odwolujacy.regon || null,
-            'przez-pelnomocnika': Odwolujacy.przez_pelnomocnika === '1' ? 1 : 0,
-            pelnomocnik: Odwolujacy.pelnomocnik_imie_nazwisko
-              ? {
-                  imie_nazwisko: Odwolujacy.pelnomocnik_imie_nazwisko,
-                  nazwa: Odwolujacy.pelnomocnik_nazwa || null,
-                  mail: Odwolujacy.pelnomocnik_mail || null,
-                }
-              : null,
-          },
-        ],
-        Zamawiajacy: [
-          {
-            krs: Zamawiajacy.krs || null,
-            nazwa: Zamawiajacy.nazwa || null,
-            nip: Zamawiajacy.nip || null,
-            regon: Zamawiajacy.regon || null,
-            prowadzacy_postepowanie:
-              Zamawiajacy.prowadzacy_postepowanie === '1'
-                ? 1
-                : Zamawiajacy.prowadzacy_postepowanie === '0'
-                ? 0
-                : null,
-          },
-        ],
-        ZamowieniePubliczne: {
-          numer_bzp: ZamowieniePubliczne.numer_bzp || null,
-          numer_postepowania: ZamowieniePubliczne.numer_postepowania || null,
-          numer_ted: ZamowieniePubliczne.numer_ted || null,
-          tytul: ZamowieniePubliczne.tytul || null,
-        },
-      };
-    } else if (index === 1) {
-      const { mocodawca, pelnomocnicy } = pelnomocnictwoData;
-      return {
-        mocodawca: [
-          {
-            data: {
-              imie_nazwisko: mocodawca.typ === 'osoba_fizyczna' ? (mocodawca.imie_nazwisko || null) : null,
-              krs: mocodawca.krs || null,
-              nazwa: mocodawca.nazwa || null,
-              nip: mocodawca.nip || null,
-              typ: mocodawca.typ,
-            },
-            podpisujacy: mocodawca.podpisujacy_imie_nazwisko
-              ? [{ imie_nazwisko: mocodawca.podpisujacy_imie_nazwisko }]
-              : [],
-          },
-        ],
-        pelnomocnicy: [
-          {
-            imie_nazwisko: pelnomocnicy.imie_nazwisko || null,
-            pesel: pelnomocnicy.pesel ? (isNaN(Number(pelnomocnicy.pesel)) ? pelnomocnicy.pesel : Number(pelnomocnicy.pesel)) : null,
-          },
-        ],
-      };
-    } else {
-      const { przelew_bankowy } = przelewData;
-      return {
-        przelew_bankowy: {
-          data_operacji: przelew_bankowy.data_operacji || null,
-          kwota: przelew_bankowy.kwota ? parseFloat(przelew_bankowy.kwota.replace(',', '.')) : null,
-          na_rachunek: przelew_bankowy.na_rachunek.replace(/\s+/g, '') || null,
-          numer_transakcji: przelew_bankowy.numer_transakcji || null,
-          tytul: przelew_bankowy.tytul || null,
-          z_rachunku: przelew_bankowy.z_rachunku.replace(/\s+/g, '') || null,
-        },
-      };
-    }
-  };
+  // Kanoniczny JSON aktywnego dokumentu (zgodny z oczekiwane-json).
+  const getCanonicalJson = () => buildCanonical(activeDoc.doc_class, {
+    odwolanie: odwolanieData,
+    pelnomocnictwo: pelnomocnictwoData,
+    przelew: przelewData,
+  });
 
   const activeDoc = docSlots[currentDocIndex];
 
-  // Zapisuje wszystkie trzy dokumenty jednym kliknięciem.
+  // Zapisuje KAŻDY plik z osobna (nawet 3 przelewy i 2 odwołania) i pobiera
+  // jeden plik JSON z wszystkimi danymi ułożonymi po kolei.
   const saveAll = async () => {
     const token = getClientToken();
+    const allDocs = commitActiveToDocs();
     let created = 0;
     let corrected = 0;
+    const entries: Array<{ plik: string; typ: string; json: unknown }> = [];
     try {
-      for (let i = 0; i < docSlots.length; i++) {
-        const slot = docSlots[i];
+      for (const slot of allDocs) {
+        const canonical = buildCanonical(slot.doc_class, slot.data);
         const result = await ingestDocument({
           client_token: token,
-          doc_class: slot.id,
-          canonical_json: getCanonicalJson(i),
-          source_name: slot.file?.name ?? slot.defaultFilename,
+          client_doc_id: slot.id,
+          doc_class: slot.doc_class,
+          canonical_json: canonical,
+          source_name: slot.sourceName,
         });
         if (result.correction_session_id) corrected++;
         else created++;
+        entries.push({ plik: slot.sourceName, typ: slot.doc_class, json: canonical });
       }
+
+      const blob = new Blob([JSON.stringify(entries, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'odwolania2json.json';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+
       setSaveNotification(
-        `Zapisano wszystkie ${docSlots.length} dokumenty (nowe: ${created}, poprawki: ${corrected}).`
+        `Zapisano ${allDocs.length} plików (nowe: ${created}, poprawki: ${corrected}).`
       );
+      setStage('done');
     } catch {
       setSaveNotification('Backend niedostępny — zmiany zostały w formularzu (demo działa dalej).');
+      setTimeout(() => setSaveNotification(null), 4000);
     }
-    setTimeout(() => setSaveNotification(null), 4000);
+  };
+
+  // Powrót do menu — czyści dane, żeby móc wczytać nowy plik .zip.
+  const resetToMenu = () => {
+    const empty = emptyForms();
+    setStage('upload');
+    setSelectedZip(null);
+    setCurrentDocIndex(0);
+    setShowJsonModal(false);
+    setSaveNotification(null);
+    setDocSlots(defaultDocs());
+    setOdwolanieData(empty.odwolanie);
+    setPelnomocnictwoData(empty.pelnomocnictwo);
+    setPrzelewData(empty.przelew);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   return (
@@ -769,30 +959,9 @@ export default function App() {
         {/* ======================================================== */}
         {stage === 'splitscreen' && (
           <div className="gov-container-wide">
-            {/* Pasek nawigacyjny i przełącznik 3 plików */}
+            {/* Pasek nawigacyjny: poprzedni/następny + zapis wszystkiego */}
             <div className="gov-doc-nav-bar">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-                <span style={{ fontWeight: 900, fontSize: '0.9375rem', color: 'var(--gov-text)' }}>
-                  Pismo:
-                </span>
-                <div className="gov-tabs-list" role="tablist">
-                  {docSlots.map((slot, index) => (
-                    <button
-                      key={slot.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={index === currentDocIndex}
-                      className={`gov-tab-btn ${index === currentDocIndex ? 'active' : ''}`}
-                      onClick={() => setCurrentDocIndex(index)}
-                    >
-                      {slot.title}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Przyciski nawigacji: Poprzedni / Następny plik */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                 <button
                   type="button"
                   className="gov-btn-secondary"
@@ -812,19 +981,20 @@ export default function App() {
                 >
                   <span>Następny plik →</span>
                 </button>
-
-                <button
-                  type="button"
-                  className="gov-btn-secondary"
-                  onClick={() => {
-                    setStage('upload');
-                    setSelectedZip(null);
-                  }}
-                  title="Załaduj inny plik .zip"
-                >
-                  Nowy .zip
-                </button>
               </div>
+
+              <button
+                type="button"
+                className="gov-btn-process"
+                onClick={saveAll}
+                title="Zapisz wszystkie dokumenty, pobierz JSON i zakończ"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="16" height="16">
+                  <polyline points="1 13 6 18 15 7"></polyline>
+                  <polyline points="9 13 14 18 23 7"></polyline>
+                </svg>
+                <span>Zapisz wszystkie</span>
+              </button>
             </div>
 
             {/* Powiadomienie o zapisaniu */}
@@ -861,7 +1031,7 @@ export default function App() {
                       Podgląd: {activeDoc.file?.name || activeDoc.defaultFilename}
                     </span>
                   </h2>
-                  <span className="gov-badge">Dokument {currentDocIndex + 1} z 3</span>
+                  <span className="gov-badge">Plik {currentDocIndex + 1} z {docSlots.length}</span>
                 </div>
 
                 <div className="gov-pdf-frame-wrapper">
@@ -944,10 +1114,41 @@ export default function App() {
                 </div>
 
                 <div className="gov-form-wrapper">
+                  {/* Wybór pliku i jego typu — razem z pozostałymi danymi w tabeli.
+                      Przełączanie nic nie czyści: każdy plik ma swoje dane. */}
+                  <div className="clean-form-section">
+                    <div className="clean-row">
+                      <label className="clean-label" htmlFor="file-select">Plik:</label>
+                      <select
+                        id="file-select"
+                        className="clean-select"
+                        value={currentDocIndex}
+                        onChange={(e) => selectDoc(Number(e.target.value))}
+                      >
+                        {docSlots.map((slot, index) => (
+                          <option key={slot.id} value={index}>{slot.title} — {slot.sourceName}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="clean-row">
+                      <label className="clean-label" htmlFor="doc-type-select">Typ dokumentu:</label>
+                      <select
+                        id="doc-type-select"
+                        className="clean-select"
+                        value={activeDoc.doc_class}
+                        onChange={(e) => changeDocClass(e.target.value as DocClass)}
+                      >
+                        <option value="odwolanie">Odwołanie</option>
+                        <option value="pelnomocnictwo">Pełnomocnictwo</option>
+                        <option value="przelew">Przelew</option>
+                      </select>
+                    </div>
+                  </div>
+
                   {/* ======================================================== */}
                   {/* DOKUMENT 1: ODWOŁANIE DO KIO                             */}
                   {/* ======================================================== */}
-                  {currentDocIndex === 0 && (
+                  {activeDoc.doc_class === 'odwolanie' && (
                     <div>
                       {/* Sekcja: OdwolanieKIO */}
                       <div className="clean-form-section">
@@ -1379,7 +1580,7 @@ export default function App() {
                   {/* ======================================================== */}
                   {/* DOKUMENT 2: PEŁNOMOCNICTWO                               */}
                   {/* ======================================================== */}
-                  {currentDocIndex === 1 && (
+                  {activeDoc.doc_class === 'pelnomocnictwo' && (
                     <div>
                       {/* Sekcja: Mocodawca */}
                       <div className="clean-form-section">
@@ -1396,15 +1597,20 @@ export default function App() {
                             id="moc_typ"
                             className="clean-select"
                             value={pelnomocnictwoData.mocodawca.typ}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              const nextTyp = e.target.value as 'osoba_prawna' | 'osoba_fizyczna';
+                              const nazwa = pelnomocnictwoData.mocodawca.nazwa || pelnomocnictwoData.mocodawca.imie_nazwisko;
                               setPelnomocnictwoData({
                                 ...pelnomocnictwoData,
                                 mocodawca: {
                                   ...pelnomocnictwoData.mocodawca,
-                                  typ: e.target.value as 'osoba_prawna' | 'osoba_fizyczna',
+                                  typ: nextTyp,
+                                  // Zachowaj wpisaną nazwę przy zmianie typu — dane nie znikają.
+                                  nazwa,
+                                  imie_nazwisko: pelnomocnictwoData.mocodawca.imie_nazwisko || nazwa,
                                 },
-                              })
-                            }
+                              });
+                            }}
                           >
                             <option value="osoba_prawna">Osoba prawna</option>
                             <option value="osoba_fizyczna">Osoba fizyczna</option>
@@ -1539,7 +1745,7 @@ export default function App() {
                   {/* ======================================================== */}
                   {/* DOKUMENT 3: POTWIERDZENIE PRZELEWU                       */}
                   {/* ======================================================== */}
-                  {currentDocIndex === 2 && (
+                  {activeDoc.doc_class === 'przelew' && (
                     <div>
                       {/* Sekcja: Przelew bankowy */}
                       <div className="clean-form-section">
@@ -1700,6 +1906,36 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* ======================================================== */}
+        {/* WIDOK 4: GOTOWE                                           */}
+        {/* ======================================================== */}
+        {stage === 'done' && (
+          <div className="gov-container">
+            <div className="gov-loading-card" role="status" aria-live="polite"
+                 style={{ borderLeftColor: 'var(--gov-success)', textAlign: 'center', padding: '48px 28px' }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--gov-success)" strokeWidth="2"
+                   width="64" height="64" style={{ marginBottom: '16px' }}>
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="8 12 11 15 16 9"></polyline>
+              </svg>
+              <h1 className="service-title" style={{ borderLeft: 'none', paddingLeft: 0, justifyContent: 'center' }}>
+                Gotowe!
+              </h1>
+              <p style={{ margin: '16px auto 8px', maxWidth: '560px', fontSize: '1.0625rem', color: 'var(--gov-text-muted)' }}>
+                Wszystkie dokumenty zostały zapisane w bazie danych, a plik
+                <strong> odwolania2json.json</strong> został pobrany na Twój komputer.
+              </p>
+              <p style={{ margin: '0 auto 28px', maxWidth: '560px', fontSize: '0.9375rem', color: 'var(--gov-text-muted)' }}>
+                Dane poprawione przez Ciebie trafiły też do magazynu poprawek —
+                będą użyte do douczania modelu odczytu.
+              </p>
+              <button type="button" className="gov-btn-process" onClick={resetToMenu}>
+                Wróć do menu — wczytaj nowy .zip
+              </button>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* 3. MODAL PODGLĄDU KANONICZNEGO JSON */}
@@ -1742,7 +1978,7 @@ export default function App() {
               }}
             >
               <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 900 }}>
-                Kanoniczny JSON: {activeDoc.id}.json
+                Kanoniczny JSON: {activeDoc.doc_class}.json
               </h3>
               <button
                 type="button"
@@ -1785,7 +2021,7 @@ export default function App() {
                   const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(getCanonicalJson(), null, 2));
                   const dlAnchorElem = document.createElement('a');
                   dlAnchorElem.setAttribute('href', dataStr);
-                  dlAnchorElem.setAttribute('download', `${activeDoc.id}.json`);
+                  dlAnchorElem.setAttribute('download', `${activeDoc.doc_class}.json`);
                   dlAnchorElem.click();
                 }}
               >

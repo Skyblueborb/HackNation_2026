@@ -8,6 +8,7 @@ const TOKEN = (import.meta.env as Record<string, string>)?.VITE_API_TOKEN || '';
 
 export interface StoredDocument {
   document_id: string;
+  client_doc_id: string | null;
   doc_class: 'odwolanie' | 'pelnomocnictwo' | 'przelew';
   source_name: string | null;
   canonical_json: any;
@@ -40,10 +41,11 @@ export function getClientToken(): string {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const isForm = typeof FormData !== 'undefined' && init?.body instanceof FormData;
   const response = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
-      'Content-Type': 'application/json',
+      ...(isForm ? {} : { 'Content-Type': 'application/json' }),
       ...(TOKEN ? { 'X-API-Token': TOKEN } : {}),
       ...(init?.headers || {}),
     },
@@ -57,6 +59,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 /** Zapisz wynik (pierwszy raz) albo poprawkę (gdy JSON się zmienił). */
 export function ingestDocument(payload: {
   client_token: string;
+  client_doc_id: string;   // jeden plik z ZIP-a = jeden dokument
   doc_class: 'odwolanie' | 'pelnomocnictwo' | 'przelew';
   canonical_json: unknown;
   source_name?: string;
@@ -66,6 +69,22 @@ export function ingestDocument(payload: {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+/** Wyślij skan PDF przez OCR + LLM i zapisz wynik w bazie. */
+export function analyzeDocument(
+  blob: Blob,
+  filename: string,
+  client_token: string,
+  doc_class: string,
+  client_doc_id?: string,
+): Promise<IngestResult & { canonical_json: any; llm?: any }> {
+  const form = new FormData();
+  form.append('client_token', client_token);
+  form.append('doc_class', doc_class);
+  if (client_doc_id) form.append('client_doc_id', client_doc_id);
+  form.append('file', blob, filename);
+  return request('/analyze', { method: 'POST', body: form });
 }
 
 /** Pobierz wszystkie wyniki zapisane dla tej karty. */

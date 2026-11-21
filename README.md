@@ -18,7 +18,15 @@ src/o2jcore/    rdzeń współdzielony z przyszłą aplikacją produkcyjną o2j
                 ekstrakcja tekstu z PDF, smoke-test OCR.
 src/lab/        kod samego laboratorium: CLI, cache, split dev/holdout,
                 ewaluator (flatten/match/compare/metrics/errors), manifest
-                runów, leaderboard.
+                runów, leaderboard, oraz `lab/llm/` (istniejący pipeline
+                OCR-tekst -> LLM -> JSON).
+src/ocr_common/ kontrakty i współdzielony pipeline OCR (ports, pipeline, registry).
+src/ocr_api/    produkcyjny serwer HTTP na GPU (CUDA BF16) + adapter do `lab/llm`.
+src/local_ai/   osobny serwer MLX tylko do testów lokalnych na Macu
+                oraz `local-llm` (lokalny tryb LLM).
+backend/        serwer FastAPI + SQLite dla frontendu; endpoint `/api/analyze`
+                łączy OCR, LLM i bazę danych.
+frontend/       aplikacja React/Vite (ZIP -> OCR/LLM -> formularze -> SQLite).
 configs/        konfiguracja jako dane: klasy dokumentów (classes/*.yaml),
                 enum czynności (enums/), modele LLM (models.yaml), ścieżki
                 (paths.yaml).
@@ -181,7 +189,12 @@ jest zakazane.
 ## OCR API
 
 An optional LLM module can be plugged in with `OCR_LLM_PROCESSOR=module:attr`;
-the core contains no LLM code. See `docs/llm-module-contract.md`.
+the core contains no LLM code. The lab LLM pipeline is already bridged through
+`ocr_api.llm_processor`; enable it with
+`OCR_LLM_PROCESSOR=ocr_api.llm_processor:processor` and
+`OCR_LLM_MODEL=qwen3-8b` (a key in `configs/models.yaml`). Start that LLM server
+with `lab serve --model qwen3-8b`. Then `/analyze` gains an `llm` field with
+`class`, `data`, `error`, `llm_calls`. See `docs/llm-module-contract.md`.
 
 Production runs on an NVIDIA L4 (Ubuntu Noble) box with PyTorch CUDA, full
 BF16 `lightonai/LightOnOCR-3-4B`, preloaded at startup. Local MLX is a separate
@@ -293,3 +306,37 @@ Keep the Mac awake during judging:
 ```bash
 caffeinate -dims
 ```
+
+## Full demo: frontend + SQLite backend + OCR/LLM
+
+The React app talks to the FastAPI backend on port 8000 through Vite's `/api`
+proxy. The backend stores results in SQLite and runs OCR + optional LLM.
+
+```bash
+# Backend (local Mac: MLX OCR, no LLM server needed)
+uv sync --extra serve --extra local
+API_KEY=dev-key WEB_OCR_BACKEND=mlx \
+  MLX_MODEL=models/LightOnOCR-3-4B-mlx-8bit \
+  uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1
+
+# Frontend
+cd frontend && npm install && npm run dev
+```
+
+Open `http://localhost:3000`, upload a ZIP of scanned PDFs, click
+**Przetwórz do JSON**. Each PDF is sent to `/api/analyze`, OCR/LLM output is
+saved to SQLite, and the forms are hydrated from the stored canonical JSON.
+
+Production on NVIDIA L4:
+
+```bash
+uv sync --extra gpu --extra serve
+lab serve --model qwen3-8b-l4     # LLM: full GPU offload + flash attention
+API_KEY=<key> OCR_LLM_PROCESSOR=ocr_api.llm_processor:processor \
+  OCR_LLM_MODEL=qwen3-8b-l4 \
+  uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1
+```
+
+Local LLM mode (separate, like `local-ai` for OCR): `local-llm serve`
+(Metal) or `local-llm serve --cpu`. See `docs/llm-runtime.md`.
+Backend storage details: `docs/BACKEND.md`.

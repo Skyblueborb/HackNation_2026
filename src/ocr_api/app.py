@@ -66,4 +66,5 @@ async def analyze(file: UploadFile = File(...)) -> dict:
         backend="cuda",
         model=MODEL_ID,
         processor=PROCESSOR,
+        filename=file.filename,
     )

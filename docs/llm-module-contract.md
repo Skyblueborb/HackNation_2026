@@ -1,7 +1,21 @@
 # LLM module contract
 
-The OCR services do not contain LLM code. An incoming LLM module plugs in through
-one optional environment variable:
+The OCR services do not contain LLM code. The lab LLM pipeline from
+`src/lab/llm/` is already connected through a thin adapter at
+`src/ocr_api/llm_processor.py`. Enable it with:
+
+```bash
+OCR_LLM_PROCESSOR=ocr_api.llm_processor:processor
+OCR_LLM_MODEL=qwen3-8b-l4   # GPU profile (NVIDIA L4); key in configs/models.yaml
+```
+
+For local development on a Mac, use the Metal profile instead:
+
+```bash
+OCR_LLM_MODEL=local-llm
+```
+
+Any other LLM module plugs in through the same optional environment variable:
 
 ```bash
 OCR_LLM_PROCESSOR=your_package.your_module:your_processor
@@ -46,11 +60,27 @@ Without a processor:
 {"backend": "cuda", "pages": [{"page": 1, "text": "..."}]}
 ```
 
-With a processor:
+With the adapter enabled, `llm` is a JSON object with four keys:
 
 ```json
-{"backend": "cuda", "pages": [{"page": 1, "text": "..."}], "llm": <returned value>}
+{
+  "backend": "cuda",
+  "pages": [{"page": 1, "text": "..."}],
+  "llm": {
+    "class": "odwolanie",
+    "data": {"decyzja": "..."},
+    "error": null,
+    "llm_calls": 1
+  }
+}
 ```
+
+`class` is the routed document class. `data` is the extracted JSON for that
+class, or `null` when extraction failed. `error` is `null` on success or a short
+message on failure. `llm_calls` is the number of model calls made.
+
+A third-party processor may return any JSON-serializable value; the shape above
+is specific to the shipped adapter.
 
 ## Rules for the incoming module
 

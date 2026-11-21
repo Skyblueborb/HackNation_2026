@@ -15,7 +15,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 def test_load_models_reads_all_three_local_servers():
     models = load_models(paths.configs_root() / "models.yaml")
 
-    assert set(models) == {"qwen3-4b", "qwen3-8b", "bielik-11b"}
+    assert set(models) == {
+        "qwen3-4b",
+        "qwen3-8b",
+        "bielik-11b",
+        "qwen3-8b-l4",
+        "local-llm",
+    }
     assert models["qwen3-8b"].port == 8082
     assert str(models["qwen3-8b"].base_url).endswith("/v1")
     assert models["qwen3-8b"].no_think_suffix == "/no_think"

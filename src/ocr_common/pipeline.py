@@ -16,13 +16,14 @@ async def run_ocr_async(
     backend: str,
     model: str,
     processor: LLMProcessor | None = None,
+    filename: str | None = None,
 ) -> dict:
     """Render pages, extract text, and call an optional LLM processor."""
     started = time.perf_counter()
     logger.info("analyze start: backend=%s model=%s", backend, model)
     async with inference_lock:
         result = await asyncio.to_thread(
-            _run_locked, data, extractor, backend, model, processor, started
+            _run_locked, data, extractor, backend, model, processor, started, filename
         )
     return result
 
@@ -34,6 +35,7 @@ def _run_locked(
     model: str,
     processor: LLMProcessor | None,
     started: float,
+    filename: str | None = None,
 ) -> dict:
     images = render_pages(data)
     logger.info("rendered %d page(s)", len(images))
@@ -53,7 +55,9 @@ def _run_locked(
             logger.warning("page %d: OCR returned empty text", number)
         pages.append(OCRPage(number=number, text=text))
 
-    document = OCRDocument(backend=backend, model=model, pages=tuple(pages))
+    document = OCRDocument(
+        backend=backend, model=model, pages=tuple(pages), filename=filename
+    )
     response = document.as_dict()
     if processor is not None:
         response["llm"] = processor.process(document)

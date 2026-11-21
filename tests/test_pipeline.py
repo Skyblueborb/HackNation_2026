@@ -45,6 +45,24 @@ def test_pipeline_calls_processor_with_ocr_document():
     assert processor.seen.pages[0].text == "text"
 
 
+def test_pipeline_passes_filename_to_processor():
+    class Recorder:
+        def process(self, document):
+            return {"filename": document.filename}
+
+    result = asyncio.run(
+        run_ocr_async(
+            pdf_bytes(),
+            FakeExtractor(),
+            backend="test",
+            model="m",
+            processor=Recorder(),
+            filename="odwolanie.pdf",
+        )
+    )
+    assert result["llm"] == {"filename": "odwolanie.pdf"}
+
+
 def test_pipeline_without_processor_has_no_llm_field():
     result = asyncio.run(
         run_ocr_async(pdf_bytes(), FakeExtractor(), backend="test", model="m")
