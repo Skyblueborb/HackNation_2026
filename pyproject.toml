@@ -15,6 +15,7 @@ dependencies = [
     "openai",
     "Pillow",
     "jiwer",
+    "pytesseract",
 ]
 
 [project.optional-dependencies]

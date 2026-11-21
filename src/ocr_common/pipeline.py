@@ -6,6 +6,7 @@ import asyncio
 import time
 
 from ocr_common.common import image_is_blank, inference_lock, logger, render_pages
+from ocr_common.deskew import deskew_image
 from ocr_common.ports import LLMProcessor, OCRDocument, OCRPage, PageExtractor
 
 
@@ -44,6 +45,8 @@ def _run_locked(
         page_started = time.perf_counter()
         blank = image_is_blank(image)
         logger.info("page %d: size=%s blank=%s", number, image.size, blank)
+        if not blank:
+            image = deskew_image(image)
         text = extractor.extract_page(image).strip()
         logger.info(
             "page %d: %d chars in %.2fs",
