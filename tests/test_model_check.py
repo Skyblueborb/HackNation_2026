@@ -182,3 +182,24 @@ def test_score_combo_writes_metrics_and_report(tmp_path):
     assert (combo / "metrics.json").exists()
     assert (combo / "report.md").exists()
     assert "f1_skip" in str(result)
+
+
+def test_score_combo_report_survives_a_field_mismatch(tmp_path):
+    root = _make_data_root(tmp_path, n_sets=1)
+    case = mc.select_documents(
+        root, corpus="przyklad", count=1, random_sample=False, seed=42,
+        sets=None, pdf_paths=None,
+    )[0]
+    case.gold.write_text(
+        '{"OdwolanieKIO": {"miejscowosc": "Gdansk"}}', encoding="utf-8"
+    )
+    combo = tmp_path / "combo"
+    pred_dir = combo / "predictions" / case.set_id
+    pred_dir.mkdir(parents=True)
+    (pred_dir / "odwolanie.json").write_text(
+        '{"OdwolanieKIO": {"miejscowosc": "Warszawa"}}', encoding="utf-8"
+    )
+    mc.score_combo([case], combo, mc._specs(), [case.set_id])
+    report = (combo / "report.md").read_text(encoding="utf-8")
+    assert "Warszawa" in report
+    assert "Gdansk" in report

@@ -377,8 +377,8 @@ def score_combo(
     lines.extend(["", "## Worst field mismatches", ""])
     for mismatch in result.mismatches[:5]:
         lines.append(
-            f"- {mismatch['set']}/{mismatch['doc']} {mismatch['field']}: "
-            f"gold={mismatch['gold']!r} pred={mismatch['pred']!r}"
+            f"- {mismatch['file']} {mismatch['field']}: "
+            f"gold={mismatch['expected']!r} pred={mismatch['got']!r}"
         )
     (combo_dir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return summary
