@@ -144,7 +144,8 @@ def _collect_scalars(obj: dict, node: _Node, prefix: str, out: dict[str, Any]) -
             out[cpath] = val
     extra_keys = present - set(node.children.keys())
     for key in sorted(extra_keys):
-        _collect_extra(obj[key], f"!extra:{key}", out)
+        extra_path = f"!extra:{prefix}.{key}" if prefix else f"!extra:{key}"
+        _collect_extra(obj[key], extra_path, out)
 
 
 def flatten_fields(
@@ -179,7 +180,8 @@ def _flatten_node_single(
     if prefix_extra:
         extra_keys = present - set(node.children.keys())
         for key in sorted(extra_keys):
-            _collect_extra(obj[key], f"!extra:{key}", out)
+            extra_path = f"!extra:{prefix}.{key}" if prefix else f"!extra:{key}"
+            _collect_extra(obj[key], extra_path, out)
 
 
 def flatten(obj: dict, spec: DocClassSpec, *, prefix_extra: bool = True) -> dict[str, JsonScalar]:
@@ -206,6 +208,7 @@ def flatten_pair(
         gold_obj if isinstance(gold_obj, dict) else {},
         tree,
         "",
+        "",
         pred_out,
         gold_out,
         spec.fields,
@@ -218,22 +221,30 @@ def _flatten_pair_node(
     pred_obj: dict,
     gold_obj: dict,
     node: _Node,
-    prefix: str,
+    out_prefix: str,
+    canon_prefix: str,
     pred_out: dict[str, JsonScalar],
     gold_out: dict[str, JsonScalar],
     all_fields: list[FieldSpec],
     match_mod: Any,
 ) -> None:
+    """`out_prefix` carries real list indices (what actually lands in
+    pred_out/gold_out's keys); `canon_prefix` mirrors it but always uses
+    bare '[]' for list segments, matching how FieldSpec.path is spelled in
+    the YAML specs -- needed so `relative_fields` can look up a nested
+    list's own element fields correctly however deep the nesting goes
+    (e.g. mocodawca[].podpisujacy[])."""
     pred_present = set(pred_obj.keys())
     gold_present = set(gold_obj.keys())
     for key, child in node.children.items():
-        cpath = f"{prefix}.{key}" if prefix else key
+        out_cpath = f"{out_prefix}.{key}" if out_prefix else key
+        canon_cpath = f"{canon_prefix}.{key}" if canon_prefix else key
         pred_val = pred_obj.get(key)
         gold_val = gold_obj.get(key)
         if child.is_list:
             pred_list = pred_val if isinstance(pred_val, list) else []
             gold_list = gold_val if isinstance(gold_val, list) else []
-            local_fields = relative_fields(all_fields, cpath)
+            local_fields = relative_fields(all_fields, f"{canon_cpath}[]")
             pairs = match_mod.greedy_align(pred_list, gold_list, child.list_spec, local_fields)
             for i, (pidx, gidx) in enumerate(pairs):
                 p_elem = pred_list[pidx] if pidx is not None else {}
@@ -241,18 +252,30 @@ def _flatten_pair_node(
                 p_elem = p_elem if isinstance(p_elem, dict) else {}
                 g_elem = g_elem if isinstance(g_elem, dict) else {}
                 _flatten_pair_node(
-                    p_elem, g_elem, child, f"{cpath}[{i}]", pred_out, gold_out, all_fields, match_mod
+                    p_elem,
+                    g_elem,
+                    child,
+                    f"{out_cpath}[{i}]",
+                    f"{canon_cpath}[]",
+                    pred_out,
+                    gold_out,
+                    all_fields,
+                    match_mod,
                 )
         elif child.children:
             sub_pred = pred_val if isinstance(pred_val, dict) else {}
             sub_gold = gold_val if isinstance(gold_val, dict) else {}
-            _flatten_pair_node(sub_pred, sub_gold, child, cpath, pred_out, gold_out, all_fields, match_mod)
+            _flatten_pair_node(
+                sub_pred, sub_gold, child, out_cpath, canon_cpath, pred_out, gold_out, all_fields, match_mod
+            )
         else:
-            pred_out[cpath] = pred_val
-            gold_out[cpath] = gold_val
+            pred_out[out_cpath] = pred_val
+            gold_out[out_cpath] = gold_val
 
     expected = set(node.children.keys())
     for key in sorted(pred_present - expected):
-        _collect_extra(pred_obj[key], f"!extra:{key}", pred_out)
+        extra_path = f"!extra:{out_prefix}.{key}" if out_prefix else f"!extra:{key}"
+        _collect_extra(pred_obj[key], extra_path, pred_out)
     for key in sorted(gold_present - expected):
-        _collect_extra(gold_obj[key], f"!extra:{key}", gold_out)
+        extra_path = f"!extra:{out_prefix}.{key}" if out_prefix else f"!extra:{key}"
+        _collect_extra(gold_obj[key], extra_path, gold_out)
