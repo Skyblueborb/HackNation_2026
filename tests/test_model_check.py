@@ -163,6 +163,30 @@ def test_scan_llm_probe_is_na(tmp_path):
     assert result["status"] == "N/A"
 
 
+def test_write_summary_uses_absolute_report_paths(tmp_path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    mc.write_summary(
+        run_dir,
+        [
+            {
+                "analysis": "e2e",
+                "ocr_model": "text",
+                "llm_profile": "local-llm",
+                "n_files_evaluated": 1,
+                "exact_f1_skip": 0.5,
+                "fuzzy_f1_skip": 0.5,
+                "ocr_proxy": {"cer_mean": "N/A"},
+                "speed": {"total": {"mean": 1.0}},
+                "combo_dir": "e2e/text/local-llm",
+                "field_groups": {},
+            }
+        ],
+    )
+    summary = (run_dir / "summary.md").read_text(encoding="utf-8")
+    assert str((run_dir / "e2e/text/local-llm/report.md").resolve()) in summary
+
+
 def test_configure_logging_disables_propagation():
     mc.configure_logging(False)
     assert mc.logger.propagate is False

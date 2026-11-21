@@ -647,12 +647,13 @@ def write_summary(run_dir: Path, results: list[dict[str, Any]]) -> None:
         groups = row.get("field_groups", {})
         text_f1 = groups.get("text", {}).get("exact_f1_skip", 0.0)
         strict_f1 = groups.get("strict", {}).get("binary_f1", 0.0)
+        report_path = (run_dir / row["combo_dir"] / "report.md").resolve()
         lines.append(
             f"| {row['analysis']} | {row['ocr_model']} | {row['llm_profile']} | "
             f"{row['n_files_evaluated']} | {row['exact_f1_skip']:.4f} | "
             f"{row['fuzzy_f1_skip']:.4f} | {text_f1:.4f} | {strict_f1:.4f} | "
             f"{row['ocr_proxy']['cer_mean']} | {speed} | "
-            f"{row['combo_dir']}/report.md |"
+            f"{report_path} |"
         )
     (run_dir / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -689,7 +690,10 @@ def execute_model_check(options: dict[str, Any]) -> Path:
     analyses = options["analysis"]
     ocr_models = options["ocr_models"]
     llm_profiles = options["llm_profiles"]
-    run_dir = Path(options["out_dir"]) / f"{time.strftime('%Y%m%dT%H%M%S')}-{options['seed']}"
+    run_dir = (
+        Path(options["out_dir"]).resolve()
+        / f"{time.strftime('%Y%m%dT%H%M%S')}-{options['seed']}"
+    )
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "config.json").write_text(
         json.dumps(_jsonable(options), ensure_ascii=False, indent=2), encoding="utf-8"
