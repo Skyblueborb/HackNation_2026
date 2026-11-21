@@ -17,6 +17,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+serve = ["fastapi", "uvicorn", "python-multipart", "httpx"]
+demo = ["mlx-vlm"]
 lab = [
     "jiwer",
     "pandas",

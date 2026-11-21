@@ -25,3 +25,8 @@
 | tessdata_best | latest | Apache-2.0 | Modele języka `pol` dla Tesseract | 2026-11-21 |
 | poppler | system | GPL-2 (tylko narzędzia dev, do potwierdzenia) | Narzędzia PDF (dev-only, nie wdrażane produkcyjnie) | 2026-11-21 |
 | llama.cpp | latest | MIT | Lokalny serwer modeli LLM (`llama-server`) | 2026-11-21 |
+| fastapi | latest | MIT | Serwer HTTP API dla ścieżki OCR | 2026-11-21 |
+| uvicorn | latest | BSD-3 | ASGI server dla API | 2026-11-21 |
+| python-multipart | latest | Apache-2.0 | Upload plików PDF przez API | 2026-11-21 |
+| mlx-vlm | latest | MIT | Backend demo OCR na Apple Silicon | 2026-11-21 |
+| LightOnOCR-3-4B | latest | Apache-2.0 | Model OCR (BF16, oba backendy) | 2026-11-21 |
