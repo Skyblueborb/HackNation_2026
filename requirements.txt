@@ -97,6 +97,7 @@ click==8.5.1 \
     --hash=sha256:9bbfada76703fd1d784b83eea012e3e8c6a001a876543ef104fa56aaaeb072b4
     # via
     #   huggingface-hub
+    #   jiwer
     #   uvicorn
 colorama==0.4.6 ; sys_platform == 'win32' \
     --hash=sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44 \
@@ -277,6 +278,10 @@ jiter==0.19.0 \
     --hash=sha256:ee63ba51f837d5a4bc2d79f6255ef0e754922519b172099fe4b9e8b1a6c85513 \
     --hash=sha256:fc13db05062df81357bdb926fc6b1014ce8ebef511a0fe7520b818f43b74fe5b
     # via openai
+jiwer==4.0.0 \
+    --hash=sha256:7efaf0bd336b095d99ddef9dd67e1ee829d75d58aa2a81d9639870b01d6d95ea \
+    --hash=sha256:ae9c051469102a61ef0927100baeeb4546f78d180c9b0948281d08eaf44c191e
+    # via o2j-lab
 llguidance==1.9.1 \
     --hash=sha256:0ab9d2681c0fcb4389f3c1c79697f1e724771d74d366bb5a22edae155252dfed \
     --hash=sha256:31b75c9f6e09d000d062ef7e4eb3bcb3759fc1eda5619be50fdd8a830b0e8bdf \
@@ -659,7 +664,9 @@ rapidfuzz==3.14.6 \
     --hash=sha256:c69fb0e064d10c79908dcda76d7ca8ecdf8393a39acbb74dbad3f709f2c60e95 \
     --hash=sha256:e13a8160d017b499ec7a2fa9d0ce1ae2e7377080815785819f966fb235d4eb60 \
     --hash=sha256:faebff9b9a287fb673f9a66465a7e03043601c9bfe5e71c3f91b3f2e7b8a37f6
-    # via o2j-lab
+    # via
+    #   jiwer
+    #   o2j-lab
 regex==2026.11.19 \
     --hash=sha256:0d40bb306d4979b4c6f78f779492528ec9a6a59ca68381a78e6769ea969349cf \
     --hash=sha256:1b7f3e00586bc694ad2f96f39fd27ee6ddc49e827d71d673e06a80f564947332 \
