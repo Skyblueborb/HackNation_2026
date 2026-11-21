@@ -167,7 +167,24 @@ jest z `przelew.json`.
 ## 6. Jak czytać wyniki
 
 `summary.md` ma jedną linię na kombinację: analiza, model OCR, profil LLM,
-liczba plików, F1 exact, F1 fuzzy, średni CER i średni czas całkowity.
+liczba plików, F1 exact, F1 fuzzy, F1 dla tekstu, binary F1 dla wartości
+ścisłych, średni CER, średni czas całkowity i link do `report.md`.
+
+Osobne F1 dla typów pól:
+
+| Grupa | Pola | Score |
+|---|---|---|
+| `text` | `normalizer: text`, `name` — opisy, nazwy, tytuły, miejscowości | zwykłe F1 exact/fuzzy |
+| `date` | `date_iso` — daty | binary: 1 albo 0 na pole |
+| `identifier` | `digits`, `nrb26`, `bzp`, `ted` — KRS, NIP, REGON, numery | binary: 1 albo 0 na pole |
+| `number` | `enum_int`, `money` — identyfikatory liczbowe, kwoty | binary: 1 albo 0 na pole |
+| `other` | pola bez rozpoznanego normalizera | binary: 1 albo 0 na pole |
+| `strict` | suma `date` + `identifier` + `number` + `other` | binary: 1 albo 0 na pole |
+
+Dla wartości ścisłych nie ma częściowego dopasowania. Pole dostaje `1`, jeśli
+wynik `exact` to `TP` albo `TN`, oraz `0` przy `FP` albo `FN`. Agregat grupy to
+średnia z tych zer i jedynek — więc np. `0.8` oznacza 4 poprawne pola na 5.
+W `report.md` są tabele grup oraz lista wyników dla każdego pola.
 
 `report.md` w katalogu kombinacji ma:
 

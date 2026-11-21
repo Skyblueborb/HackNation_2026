@@ -237,6 +237,101 @@ def test_score_combo_writes_metrics_and_report(tmp_path):
     assert "f1_skip" in str(result)
 
 
+def test_field_groups_split_text_and_strict_values(tmp_path):
+    root = _make_data_root(tmp_path, n_sets=1)
+    case = mc.select_documents(
+        root, corpus="przyklad", count=1, random_sample=False, seed=42,
+        sets=None, pdf_paths=None,
+    )[0]
+    case.gold.write_text(
+        json.dumps(
+            {
+                "OdwolanieKIO": {
+                    "data": "2026-09-03",
+                    "czynnosc_dzien": "2026-08-22",
+                    "miejscowosc": "Gdansk",
+                },
+                "Odwolujacy": [{"krs": "9999669444", "nazwa": "Hartica"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    combo = tmp_path / "combo"
+    pred_dir = combo / "predictions" / case.set_id
+    pred_dir.mkdir(parents=True)
+    (pred_dir / "odwolanie.json").write_text(
+        json.dumps(
+            {
+                "OdwolanieKIO": {
+                    "data": "2026-09-03",
+                    "czynnosc_dzien": "2026-08-22",
+                    "miejscowosc": "Warszawa",
+                },
+                "Odwolujacy": [{"krs": "0000000000", "nazwa": "Hartica"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = mc.score_combo([case], combo, mc._specs(), [case.set_id])
+    groups = result["field_groups"]
+    assert groups["date"]["binary_f1"] == 1.0
+    assert groups["identifier"]["field_scores"]["Odwolujacy[].krs"] == 0
+    assert groups["identifier"]["binary_f1"] < 1.0
+    assert groups["text"]["exact_f1_skip"] < 1.0
+    assert (combo / "report.md").read_text(encoding="utf-8").find("Field groups") >= 0
+
+
+def test_score_combo_report_includes_documents_and_ocr_text(tmp_path):
+    root = _make_data_root(tmp_path, n_sets=1)
+    case = mc.select_documents(
+        root, corpus="przyklad", count=1, random_sample=False, seed=42,
+        sets=None, pdf_paths=None,
+    )[0]
+    case.gold.write_text(
+        '{"OdwolanieKIO": {"miejscowosc": "Gdansk", "data": "2026-09-03"}}',
+        encoding="utf-8",
+    )
+    combo = tmp_path / "combo"
+    pred_dir = combo / "predictions" / case.set_id
+    pred_dir.mkdir(parents=True)
+    (pred_dir / "odwolanie.json").write_text(
+        '{"OdwolanieKIO": {"miejscowosc": "Warszawa", "data": "2026-09-03"}}',
+        encoding="utf-8",
+    )
+    ocr_dir = combo / "ocr" / case.set_id
+    ocr_dir.mkdir(parents=True)
+    (ocr_dir / "odwolanie.ocr.txt").write_text("RAW OCR MARKER\n", encoding="utf-8")
+
+    mc.score_combo([case], combo, mc._specs(), [case.set_id])
+    report = (combo / "report.md").read_text(encoding="utf-8")
+    assert "RAW OCR MARKER" in report
+    assert "GOLD JSON" in report
+    assert "PREDICTED JSON" in report
+    assert "Correct fields" in report
+    assert "Wrong fields" in report
+    assert "Warszawa" in report
+    assert "Gdansk" in report
+
+
+def test_score_combo_logs_mismatch_details(caplog, tmp_path):
+    root = _make_data_root(tmp_path, n_sets=1)
+    case = mc.select_documents(
+        root, corpus="przyklad", count=1, random_sample=False, seed=42,
+        sets=None, pdf_paths=None,
+    )[0]
+    case.gold.write_text('{"OdwolanieKIO": {"miejscowosc": "Gdansk"}}', encoding="utf-8")
+    combo = tmp_path / "combo"
+    pred_dir = combo / "predictions" / case.set_id
+    pred_dir.mkdir(parents=True)
+    (pred_dir / "odwolanie.json").write_text(
+        '{"OdwolanieKIO": {"miejscowosc": "Warszawa"}}', encoding="utf-8"
+    )
+    with caplog.at_level(logging.INFO, logger="lab.model_check"):
+        mc.score_combo([case], combo, mc._specs(), [case.set_id])
+    assert "MISMATCH" in caplog.text
+    assert "Warszawa" in caplog.text
+
+
 def test_score_combo_report_survives_a_field_mismatch(tmp_path):
     root = _make_data_root(tmp_path, n_sets=1)
     case = mc.select_documents(
