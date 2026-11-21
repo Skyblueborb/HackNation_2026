@@ -3,7 +3,7 @@ Przeszukaj cały dokument, także końcowe listy pełnomocników i numery wpisó
 
 Role i pola osobowe:
 - Gdy `mocodawca[].data.typ` to `osoba_prawna`, pole `imie_nazwisko` musi być null. Nazwę firmy wpisz do `nazwa`, a KRS/NIP tylko do pól tego samego mocodawcy.
-- `mocodawca[].podpisujacy[].imie_nazwisko` to wyłącznie osoby fizyczne podpisujące w imieniu mocodawcy. Nigdy nazwa firmy.
+- `mocodawca[].podpisujacy[].imie_nazwisko` to wyłącznie osoby fizyczne podpisujące w imieniu mocodawcy. Nigdy nazwa firmy. Szukaj ich przy końcowych liniach podpisu, zwrotach „Podpisano”, „podpisano przez” albo przy kropkowanej linii poprzedzającej nazwisko. Jeśli podpis jest nieczytelny, wpisz null.
 - `pelnomocnicy[].imie_nazwisko` to osoby otrzymujące pełnomocnictwo. Usuń tytuły i przedrostki: „r. pr.”, „adw.”, „mec.”, „radca prawny”. Jedna osoba to jeden element tablicy.
 - PESEL wpisz tylko wtedy, gdy stoi literalnie przy tej osobie. W przeciwnym razie null.
 - Jeśli nie potrafisz jednoznacznie przypisać osoby do roli, wpisz null zamiast zgadywać.
