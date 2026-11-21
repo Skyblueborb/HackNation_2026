@@ -1,0 +1,22 @@
+FROM nvidia/cuda:13.0.1-cudnn-runtime-ubuntu24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 python3-pip python3-venv ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip3 install --no-cache-dir uv
+
+WORKDIR /app
+COPY pyproject.toml uv.lock README.md ./
+COPY src ./src
+
+ENV UV_PROJECT_ENVIRONMENT=/app/.venv
+RUN uv sync --frozen --extra gpu --extra serve
+ENV PATH=/app/.venv/bin:$PATH
+
+ENV OCR_HOST=0.0.0.0
+ENV OCR_PORT=8000
+EXPOSE 8000
+
+ENTRYPOINT ["ocr-api", "serve"]

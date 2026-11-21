@@ -176,3 +176,120 @@ jest zakazane.
   regulaminie i środowisku — 60 zestawów nie 39, 16 GB RAM nie 24 GB,
   priorytet małych modeli, Faza B okrojona) — trzymany poza repo w notatkach
   sesji Claude.
+
+
+## OCR API
+
+An optional LLM module can be plugged in with `OCR_LLM_PROCESSOR=module:attr`;
+the core contains no LLM code. See `docs/llm-module-contract.md`.
+
+Production runs on an NVIDIA L4 (Ubuntu Noble) box with PyTorch CUDA, full
+BF16 `lightonai/LightOnOCR-3-4B`, preloaded at startup. Local MLX is a separate
+app used only for testing on the Mac. The two dependency sets never mix.
+
+### 1. Generate an API key
+
+```bash
+uv sync --extra serve
+uv run ocr-api keygen
+```
+
+That prints one 256-bit key, e.g. `xY3...`. Keep it secret. Store it on the
+server as `API_KEY`; give it to judges with the URL.
+
+The app refuses to start without `API_KEY`.
+
+### 2. Run the GPU service
+
+```bash
+docker build -f Dockerfile.gpu -t ocr-gpu .
+docker run --rm --gpus all -p 8000:8000 \
+  -e API_KEY=<generated-key> \
+  ocr-gpu
+```
+
+Or without Docker, on the L4 box:
+
+```bash
+uv sync --extra gpu --extra serve
+API_KEY=<generated-key> ocr-api serve --host 0.0.0.0 --port 8000
+```
+
+Defaults: host `0.0.0.0`, port `8000`. Override with `OCR_HOST`/`OCR_PORT` or
+the CLI flags. Add `--verbose` to either `serve` command for DEBUG console logs;
+`OCR_VERBOSE=1` does the same. Logs show model load time, page size, blank-page
+checks, OCR time and character count, and total request time. API keys are never
+logged. Verify with:
+
+```bash
+curl http://<public-ip>:8000/health
+```
+
+Open port 8000 in the cloud security group. For a public HTTPS link without
+opening inbound ports:
+
+```bash
+cloudflared tunnel --url http://localhost:8000
+```
+
+Give judges the `https://*.trycloudflare.com` URL plus `X-API-Key`.
+
+### 3. Analyze a scanned PDF
+
+```bash
+curl -H 'X-API-Key: <generated-key>' \
+  -F 'file=@scan.pdf' \
+  http://<public-ip>:8000/analyze
+```
+
+Response: `{"backend": "cuda", "pages": [{"page": 1, "text": "..."}]}`.
+
+OCR runs in grounding mode by default (`OCR_PROMPT=grounding`). Output is
+markdown with headings, tables, lists and block labels with bounding boxes, e.g.
+`![title](80,70,920,140)` followed by `# Nagłówek`. Set `OCR_PROMPT=""` for
+plain transcription markdown without bounding boxes. Grounding adds about 25%
+more output tokens.
+
+Speed knobs: `OCR_MAX_EDGE` (default `2048`) caps page pixels;
+`OCR_MAX_TOKENS` (default `2048`) caps output length. `OCR_ATTN_IMPL` defaults
+to `sdpa`, which is fast on L4 without extra packages. `OCR_PRELOAD=0` disables
+startup preload.
+
+### Local testing on the Mac (separate app)
+
+```bash
+bash scripts/make-mlx-model.sh
+uv sync --extra local --extra serve
+API_KEY=<local-test-key> \
+  MLX_MODEL=models/LightOnOCR-3-4B-mlx-8bit \
+  uv run --extra local --extra serve \
+  local-ai serve --host 0.0.0.0 --port 8000
+```
+
+Same `/analyze` and `/health` contract; response `backend` is `mlx`.
+
+### One-time 0.8B trial
+
+Default stays the 4B 8-bit model. To try the smaller model once:
+
+```bash
+bash scripts/make-mlx-model-08b.sh
+OCR_MODEL=fwgpiyawudk/LightOnOCR-3-0.8B-MLX-8bit \
+  MLX_MODEL=models/LightOnOCR-3-0.8B-mlx-8bit \
+  OCR_PROMPT=grounding \
+  API_KEY=<local-test-key> \
+  uv run --extra local --extra serve \
+  local-ai serve --host 0.0.0.0 --port 8001 --verbose
+```
+
+`/health` reports the 0.8B id. Omit the env vars next run to return to 4B.
+
+The grounding prompt string is exactly `grounding`; it produces markdown with
+headings plus `![label](x1,y1,x2,y2)` block boxes. Use `OCR_PROMPT=""` for plain
+markdown without boxes.
+
+Keep the Mac awake during judging:
+
+```bash
+caffeinate -dims
+```
