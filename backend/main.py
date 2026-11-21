@@ -283,11 +283,14 @@ async def analyze(
     result = await _run_extraction(data, file.filename)
     text_p1_3 = "\n\n".join(page["text"] for page in result["pages"])
     llm = result.get("llm")
-    canonical = (
-        llm["data"]
-        if isinstance(llm, dict) and isinstance(llm.get("data"), dict)
-        else {"raw_text": text_p1_3}
-    )
+    if isinstance(llm, dict) and llm.get("rejected"):
+        # Document doesn't match any of the three known classes (e.g. a
+        # foreign/negative PDF) -- empty result, not a guessed extraction.
+        canonical: dict[str, Any] = {}
+    elif isinstance(llm, dict) and isinstance(llm.get("data"), dict):
+        canonical = llm["data"]
+    else:
+        canonical = {"raw_text": text_p1_3}
     # LLM returns spec ids (e.g. potwierdzenie_przelewu); storage uses doc
     # classes (przelew). Trust the classified class over the multipart guess.
     if isinstance(llm, dict) and llm.get("class"):

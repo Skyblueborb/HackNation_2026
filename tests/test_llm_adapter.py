@@ -25,6 +25,7 @@ def test_lab_llm_processor_uses_coworker_module(monkeypatch):
         "data": {"x": 1},
         "error": None,
         "llm_calls": 1,
+        "rejected": False,
     }
 
 
@@ -42,6 +43,27 @@ def test_lab_llm_processor_missing_spec_has_full_shape(monkeypatch):
         "data": None,
         "error": "no spec for class odwolanie",
         "llm_calls": 0,
+        "rejected": False,
+    }
+
+
+def test_lab_llm_processor_rejects_unclassified_document(monkeypatch):
+    monkeypatch.setattr(adapter, "load_models", lambda path: {"qwen": object()})
+    monkeypatch.setattr(adapter, "LLMClient", lambda model: "client")
+    monkeypatch.setattr(adapter, "PromptSet", lambda: "prompts")
+    monkeypatch.setattr(adapter, "load_all_classes", lambda *a: {"odwolanie": "spec"})
+    monkeypatch.setattr(adapter, "classify_by_rules", lambda path, text: None)
+
+    processor = adapter.LabLLMProcessor("qwen")
+    document = OCRDocument(
+        "mlx", "m", (OCRPage(1, "text"),), filename="negatywny przyklad.pdf"
+    )
+    assert processor.process(document) == {
+        "class": None,
+        "data": None,
+        "error": None,
+        "llm_calls": 0,
+        "rejected": True,
     }
 
 

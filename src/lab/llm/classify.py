@@ -26,14 +26,42 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
     "potwierdzenie_przelewu": ("przelew", "tytuł przelewu", "nadawca", "odbiorca", "rachunek"),
 }
 
+# Markers unique to documents the organizer's hidden set is known to include
+# as rejects (e.g. a TED/eForms procurement notice) but that never appear in
+# a genuine odwolanie/pelnomocnictwo/przelew. Content override: checked
+# before the filename stem and before keyword scoring, because a document
+# that is actually foreign to the three classes must never be force-fit into
+# one just because its score happened to be nonzero (odwolanie keywords like
+# "zamawiając"/"postępowani" occur naturally in procurement notices too).
+_VETO_KEYWORDS = (
+    "notice on ted website",
+    "ted.europa.eu",
+    "procedura konkurencyjna",
+    "identyfikator procedury",
+    "1. nabywca",
+)
+
+
+def has_veto_marker(text: str) -> bool:
+    """True when the text carries a marker foreign to all three known classes.
+
+    A veto is a hard reject: callers must not fall back to filename hints or a
+    default class, because the document is known not to be one of the three.
+    """
+    lowered = text.lower()
+    return any(marker in lowered for marker in _VETO_KEYWORDS)
+
 
 def classify_by_rules(pdf_path: Path, text: str) -> str | None:
+    lowered = text.lower()
+    if has_veto_marker(text):
+        return None
+
     stem = Path(pdf_path).stem.lower()
     for needle, class_id in _STEMS:
         if needle in stem:
             return class_id
 
-    lowered = text.lower()
     scores = {cid: sum(lowered.count(word) for word in words) for cid, words in _KEYWORDS.items()}
     best = max(scores.values(), default=0)
     if best == 0:

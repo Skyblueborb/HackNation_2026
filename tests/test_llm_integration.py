@@ -60,6 +60,7 @@ def test_pipeline_adds_llm_field_without_calling_server(monkeypatch):
         "data": {"decyzja": "odwolanie"},
         "error": None,
         "llm_calls": 1,
+        "rejected": False,
     }
     json.dumps(result["llm"])
 

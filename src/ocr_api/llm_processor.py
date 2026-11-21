@@ -17,7 +17,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from lab.llm.classify import classify_by_rules
+from lab.llm.classify import classify_by_rules, has_veto_marker
 from lab.llm.client import LLMClient
 from lab.llm.config import load_models
 from lab.llm.pipeline import extract_document
@@ -74,15 +74,23 @@ def validate_model(model_id: str | None = None) -> None:
         raise ValueError(_unknown_model_message(resolved, models))
 
 
-def classify_document(text: str, filename: str | None) -> str:
-    """Route by text; fall back to the filename only when text is ambiguous."""
+def classify_document(text: str, filename: str | None) -> str | None:
+    """Route by text; fall back to the filename only when text is ambiguous.
+
+    Returns None for a document that matches none of the three known classes,
+    so callers reject it instead of force-fitting it into "odwolanie". A veto
+    marker in the text is a hard reject: the filename is not consulted, since
+    the content already proves the document is foreign to all three classes.
+    """
+    if has_veto_marker(text):
+        return None
     class_id = classify_by_rules(_NEUTRAL_PATH, text)
     if class_id is None and filename:
         stem = Path(filename).stem.lower()
         for needle, candidate in _FILENAME_RULES:
             if needle in stem:
                 return candidate
-    return class_id or "odwolanie"
+    return class_id
 
 
 class LabLLMProcessor:
@@ -100,12 +108,25 @@ class LabLLMProcessor:
     def process(self, document: OCRDocument) -> dict[str, Any]:
         text = "\n\n".join(page.text for page in document.pages)
         class_id = classify_document(text, document.filename)
+        if class_id is None:
+            # Unrecognized document (e.g. a foreign/negative PDF outside the
+            # three known classes): reject rather than force-fit it into
+            # "odwolanie". Matches the `lab run` convention of an empty
+            # result for anything that doesn't classify.
+            return {
+                "class": None,
+                "data": None,
+                "error": None,
+                "llm_calls": 0,
+                "rejected": True,
+            }
         if class_id not in self.specs:
             return {
                 "class": class_id,
                 "data": None,
                 "error": f"no spec for class {class_id}",
                 "llm_calls": 0,
+                "rejected": False,
             }
         result = extract_document(
             self.client,
@@ -120,6 +141,7 @@ class LabLLMProcessor:
             "data": result.obj,
             "error": result.error,
             "llm_calls": len(result.responses),
+            "rejected": False,
         }
 
 

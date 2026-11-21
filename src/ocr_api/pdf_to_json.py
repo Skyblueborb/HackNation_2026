@@ -95,7 +95,11 @@ def run_document(
     llm = _load_processor().process(document)
     t3 = time.perf_counter()
 
-    if isinstance(llm, dict) and isinstance(llm.get("data"), dict):
+    if isinstance(llm, dict) and llm.get("rejected"):
+        # Document doesn't match any of the three known classes -- empty
+        # result, not a guessed extraction.
+        result: dict[str, Any] = {}
+    elif isinstance(llm, dict) and isinstance(llm.get("data"), dict):
         result = llm["data"]
     else:
         result = {"raw_text": "\n\n".join(texts)}
