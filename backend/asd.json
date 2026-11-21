@@ -1,0 +1,25 @@
+{
+	"step0": {
+		"valid": true
+	},
+
+	"step1": {
+		"pageCount": 13
+	},
+
+	"step2": {
+		"pagesRotation": [ 0.12, 1.1, 0.0, 0.0, 3.14 ]
+	},
+
+	"step3": {},
+
+	"step4": {
+		"rodzaj": "przelew",
+		"json": {},
+		"unsureFields": [ "numer_transakcji", "tytul" ]
+	},
+
+	"error": {
+		"atStep": "renderowanie"
+	}
+}
