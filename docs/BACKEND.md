@@ -13,13 +13,13 @@ Ctrl-C zatrzymuje wszystko, co skrypt wystartował.
 **Ręcznie (samo API):**
 ```bash
 uv sync --extra serve
-API_KEY=dev-key WEB_OCR_BACKEND=text O2J_DB_PATH=work/o2j.db \
+API_TOKEN=dev-key WEB_OCR_BACKEND=text O2J_DB_PATH=work/o2j.db \
   PYTHONPATH=src:. uv run --extra serve uvicorn backend.main:app --port 8000
 ```
 
 **Docker (baza po stronie serwera):**
 ```bash
-cp .env.example .env          # ustaw API_TOKEN i API_KEY
+cp .env.example .env          # ustaw API_TOKEN; API_KEY tylko dla serwisów OCR
 docker compose up --build     # API :8000, frontend :3000
 ```
 Plik `.db` żyje w named volume `o2j-data` pod `/data/o2j.db` — nie w repo

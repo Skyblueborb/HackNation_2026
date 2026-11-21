@@ -100,3 +100,22 @@ def test_render_leaderboard_md_empty_does_not_crash() -> None:
     md = render_leaderboard_md([])
     assert isinstance(md, str)
     assert "no runs" in md.lower()
+
+
+def test_json_validity_rate_counts_bad_docs_once(tmp_path: Path) -> None:
+    runs_root = tmp_path / "runs"
+    run_dir = runs_root / "run"
+    payload = {
+        "n_files_evaluated": 10,
+        "invalid_json": 3,
+        "missing_pred": 2,
+        "json_invalid_or_missing": 4,
+        "overall": {"exact": {"f1_skip": 0.5}, "fuzzy": {"f1_skip": 0.5}},
+    }
+    run_dir.mkdir(parents=True)
+    (run_dir / "metrics.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    summary = collect_run_summaries(runs_root)[0]
+
+    # Not (10 - 3 - 2) / 10: the two counters overlap on one document.
+    assert summary["json_validity_rate"] == 0.6

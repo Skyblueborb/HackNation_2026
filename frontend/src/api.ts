@@ -4,7 +4,9 @@
  */
 
 const BASE = '/api';
-const TOKEN = (import.meta.env as Record<string, string>)?.VITE_API_TOKEN || '';
+// Bez tokenu w bundle. Uwierzytelnianie API_TOKEN jest po stronie backendu,
+// a dev-proxy Vite przekazuje żądania /api dalej. Zmiennych VITE_* nie używamy
+// do sekretów — są wstawiane do kodu klienta i widoczne dla każdego.
 
 export interface StoredDocument {
   document_id: string;
@@ -46,7 +48,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: {
       ...(isForm ? {} : { 'Content-Type': 'application/json' }),
-      ...(TOKEN ? { 'X-API-Token': TOKEN } : {}),
       ...(init?.headers || {}),
     },
   });

@@ -34,6 +34,9 @@ fi
 : "${CORS_ORIGINS:=http://localhost:3000}"
 export API_KEY WEB_OCR_BACKEND OCR_LLM_MODEL O2J_DB_PATH CORS_ORIGINS
 export API_TOKEN="${API_TOKEN:-}"
+# Lokalny stos działa bez tokenu, ale backend wymaga jawnej zgody na brak auth.
+# Ustaw API_TOKEN w .env (albo O2J_DEV_NO_AUTH=0), aby przełączyć na autoryzację.
+export O2J_DEV_NO_AUTH="${O2J_DEV_NO_AUTH:-1}"
 export PYTHONPATH="src:."
 
 if [[ "$WITH_LLM" == "1" ]]; then
@@ -84,8 +87,9 @@ else
   echo "[dev-up] LLM wyłączony -- /api/analyze zwróci sam tekst dokumentu"
 fi
 
-echo "[dev-up] backend: http://localhost:8000  (baza: ${O2J_DB_PATH})"
-uv run --extra serve uvicorn backend.main:app --host 127.0.0.1 --port 8000 &
+echo "[dev-up] backend: http://0.0.0.0:8000  (baza: ${O2J_DB_PATH})"
+# 0.0.0.0, żeby API było widoczne także z innych urządzeń w tej samej sieci.
+uv run --extra serve uvicorn backend.main:app --host 0.0.0.0 --port 8000 &
 PIDS+=($!)
 wait_for "http://localhost:8000/api/health" "backend" 60
 

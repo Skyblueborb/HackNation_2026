@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 
-from ocr_common.common import image_is_blank, inference_lock, logger, render_pages
+from ocr_common.common import image_is_blank, inference_lock, llm_semaphore, logger, render_pages
 from ocr_common.ports import LLMProcessor, OCRDocument, OCRPage, PageExtractor
 
 
@@ -18,14 +18,27 @@ async def run_ocr_async(
     processor: LLMProcessor | None = None,
     filename: str | None = None,
 ) -> dict:
-    """Render pages, extract text, and call an optional LLM processor."""
+    """Render pages, extract text, then call an optional LLM processor.
+
+    The inference lock covers rendering/generation only. The LLM HTTP call runs
+    outside it, bounded by llm_semaphore, so OCR of the next request is not
+    blocked while the current one waits on the LLM server.
+    """
     started = time.perf_counter()
     logger.info("analyze start: backend=%s model=%s", backend, model)
     async with inference_lock:
-        result = await asyncio.to_thread(
-            _run_locked, data, extractor, backend, model, processor, started, filename
+        response, document = await asyncio.to_thread(
+            _run_locked, data, extractor, backend, model, started, filename
         )
-    return result
+    if processor is not None:
+        async with llm_semaphore:
+            response["llm"] = await asyncio.to_thread(processor.process, document)
+    logger.info(
+        "analyze done: pages=%d total=%.2fs",
+        len(document.pages),
+        time.perf_counter() - started,
+    )
+    return response
 
 
 def _run_locked(
@@ -33,10 +46,9 @@ def _run_locked(
     extractor: PageExtractor,
     backend: str,
     model: str,
-    processor: LLMProcessor | None,
     started: float,
     filename: str | None = None,
-) -> dict:
+) -> tuple[dict, OCRDocument]:
     images = render_pages(data)
     logger.info("rendered %d page(s)", len(images))
     pages: list[OCRPage] = []
@@ -58,10 +70,4 @@ def _run_locked(
     document = OCRDocument(
         backend=backend, model=model, pages=tuple(pages), filename=filename
     )
-    response = document.as_dict()
-    if processor is not None:
-        response["llm"] = processor.process(document)
-    logger.info(
-        "analyze done: pages=%d total=%.2fs", len(pages), time.perf_counter() - started
-    )
-    return response
+    return document.as_dict(), document

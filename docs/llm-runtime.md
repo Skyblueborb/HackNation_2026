@@ -6,7 +6,7 @@ Two ways to run the same `lab.llm` server stack. Both use a profile from
 ## Production — NVIDIA L4 (Ubuntu Noble)
 
 Profile `qwen3-8b-l4`: full GPU offload (`-ngl 99`) and flash attention
-(`-fa on`) on port `8082`.
+(`-fa on`). Its port, HF repo and server flags live in `configs/models.yaml`.
 
 ```bash
 lab serve --model qwen3-8b-l4
@@ -18,9 +18,9 @@ sweeps and the OCR API when selected via `OCR_LLM_MODEL`.
 
 ## Local — Mac Metal (and anywhere else)
 
-Profile `local-llm`: Qwen3-4B GGUF, Metal GPU offload on port `8081`. Wrapped by
-the `local-llm` CLI, which contains no LLM logic — it only drives
-`lab.llm.server`.
+Profile `local-llm`: Qwen3-4B GGUF with Metal GPU offload. Port and flags come
+from `configs/models.yaml`. Wrapped by the `local-llm` CLI, which contains no
+LLM logic — it only drives `lab.llm.server`.
 
 ```bash
 python -m local_ai.llm serve                 # profile local-llm, Metal

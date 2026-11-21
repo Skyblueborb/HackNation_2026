@@ -6,7 +6,7 @@ from fastapi import FastAPI, Depends
 from PIL import Image
 
 from ocr_common import configure_logging, image_is_blank, render_pages, verify_key
-from ocr_common.common import API_KEY
+from ocr_common.common import get_api_key
 from ocr_api.keygen import generate_key
 
 
@@ -27,6 +27,12 @@ def test_render_pages_caps_edge():
     pages = render_pages(pdf_bytes())
     assert len(pages) == 1
     assert max(pages[0].size) <= 2048
+
+
+def test_render_pages_honors_custom_max_edge():
+    pages = render_pages(pdf_bytes(), max_edge=128)
+    assert len(pages) == 1
+    assert max(pages[0].size) <= 128
 
 
 def test_image_is_blank():
@@ -51,5 +57,5 @@ def test_verify_key_rejects_wrong_key():
 
     r = TestClient(app).get("/x", headers={"X-API-Key": "wrong"})
     assert r.status_code == 401
-    r = TestClient(app).get("/x", headers={"X-API-Key": API_KEY})
+    r = TestClient(app).get("/x", headers={"X-API-Key": get_api_key()})
     assert r.status_code == 200

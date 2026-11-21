@@ -1,5 +1,11 @@
 # OCR LLM Serving Path Implementation Plan
 
+> **ARCHIVED 2026-11-21 — DO NOT EXECUTE.** Historical plan only. It describes
+> files and flags that no longer exist (`src/lab/serve.py`,
+> `scripts/make-llama-model.sh`, root `Dockerfile`, `OCR_BACKEND`, llama.cpp/
+> GGUF OCR). Current services are `ocr-api` (CUDA) and `local-ai` (MLX); see
+> `docs/BACKEND.md`, `docs/llm-runtime.md` and `configs/models.yaml`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** One FastAPI server exposing scanned-PDF OCR through `lightonai/LightOnOCR-3-4B` in full BF16, with `mlx` and `llama_cpp` backends sharing `extract_page(image)`.

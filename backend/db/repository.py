@@ -14,8 +14,9 @@ import json
 import re
 import sqlite3
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Iterator
 
 from o2jcore.normalize.checksums import (
     krs_valid,
@@ -53,6 +54,36 @@ def _new_id() -> str:
 
 def _dumps(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=False)
+
+
+@contextmanager
+def _immediate(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
+    """Serialize a read-modify-write with BEGIN IMMEDIATE.
+
+    When the caller already opened a transaction (the usual case inside
+    ``db()``), a savepoint keeps the critical section atomic without trying
+    to nest BEGIN. Fresh connections take the write lock up front.
+    """
+    if conn.in_transaction:
+        name = "_o2j_correction"
+        conn.execute(f"SAVEPOINT {name}")
+        try:
+            yield conn
+        except Exception:
+            conn.execute(f"ROLLBACK TO {name}")
+            conn.execute(f"RELEASE {name}")
+            raise
+        else:
+            conn.execute(f"RELEASE {name}")
+        return
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        yield conn
+    except Exception:
+        conn.rollback()
+        raise
+    else:
+        conn.commit()
 
 
 def _table(doc_class: str) -> str:
@@ -207,51 +238,46 @@ def grounded_ok(field_path: str, value: Any, text_p1_3: str | None) -> bool | No
 # ---------------------------------------------------------------------------
 
 
-def create_job(
-    conn: sqlite3.Connection,
-    *,
-    doc_sha256: str | None = None,
-    model_version: str | None = None,
-    config_version: str | None = None,
-    job_id: str | None = None,
-) -> str:
-    jid = job_id or _new_id()
-    conn.execute(
-        """INSERT INTO jobs (id, doc_sha256, status, step, progress,
-                             model_version, config_version, created_at)
-           VALUES (?, ?, 'queued', 0, 0, ?, ?, ?)""",
-        (jid, doc_sha256, model_version, config_version, _now()),
-    )
-    return jid
-
-
-def update_job(
-    conn: sqlite3.Connection,
-    job_id: str,
-    *,
-    status: str | None = None,
-    step: int | None = None,
-    progress: int | None = None,
-    error: str | None = None,
-) -> None:
-    sets: list[str] = []
-    values: list[Any] = []
-    for col, val in (("status", status), ("step", step), ("progress", progress), ("error", error)):
-        if val is not None:
-            sets.append(f"{col} = ?")
-            values.append(val)
-    if status in ("done", "failed"):
-        sets.append("finished_at = ?")
-        values.append(_now())
-    if not sets:
-        return
-    values.append(job_id)
-    conn.execute(f"UPDATE jobs SET {', '.join(sets)} WHERE id = ?", values)
-
-
 def get_job(conn: sqlite3.Connection, job_id: str) -> dict[str, Any] | None:
     row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
     return dict(row) if row else None
+
+
+def _find_keyed_document(
+    conn: sqlite3.Connection, client_token: str | None, client_doc_id: str | None
+) -> sqlite3.Row | None:
+    if client_doc_id is None:
+        return None
+    return conn.execute(
+        "SELECT * FROM source_documents WHERE client_token IS ? AND client_doc_id = ?",
+        (client_token, client_doc_id),
+    ).fetchone()
+
+
+def _touch_source_document(
+    conn: sqlite3.Connection,
+    doc_id: str,
+    *,
+    doc_class: str,
+    job_id: str | None,
+    source_name: str | None,
+    pdf_sha256: str | None,
+    pdf_path: str | None,
+    page_count: int | None,
+    text_p1_3: str | None,
+) -> None:
+    # doc_class is part of the update: a re-ingest may reclassify the file.
+    updates = ["doc_class = ?"]
+    values: list[Any] = [doc_class]
+    for col, val in (
+        ("job_id", job_id), ("source_name", source_name), ("pdf_sha256", pdf_sha256),
+        ("pdf_path", pdf_path), ("page_count", page_count), ("text_p1_3", text_p1_3),
+    ):
+        if val is not None:
+            updates.append(f"{col} = ?")
+            values.append(val)
+    values.append(doc_id)
+    conn.execute(f"UPDATE source_documents SET {', '.join(updates)} WHERE id = ?", values)
 
 
 def upsert_source_document(
@@ -268,34 +294,46 @@ def upsert_source_document(
     text_p1_3: str | None = None,
 ) -> str:
     _table(doc_class)  # walidacja klasy
-    # Nowy klucz: jeden plik = jeden dokument (może być kilka tego samego typu).
-    existing = None
-    if client_doc_id:
-        existing = conn.execute(
-            "SELECT id FROM source_documents WHERE client_doc_id = ?", (client_doc_id,)
-        ).fetchone()
-    if existing is None and client_token and not client_doc_id:
-        # Kompatybilność wsteczna ze starym zapisem (bez client_doc_id).
+    touch = dict(
+        doc_class=doc_class, job_id=job_id, source_name=source_name,
+        pdf_sha256=pdf_sha256, pdf_path=pdf_path, page_count=page_count,
+        text_p1_3=text_p1_3,
+    )
+
+    # Fast path: the unique (client_token, client_doc_id) index makes this a
+    # single atomic INSERT. No check-then-write race between clients.
+    if client_doc_id is not None and client_token is not None:
+        doc_id = _new_id()
+        cur = conn.execute(
+            """INSERT OR IGNORE INTO source_documents
+               (id, job_id, client_token, client_doc_id, doc_class, source_name,
+                pdf_sha256, pdf_path, page_count, text_p1_3, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (doc_id, job_id, client_token, client_doc_id, doc_class, source_name,
+             pdf_sha256, pdf_path, page_count, text_p1_3, _now()),
+        )
+        if cur.rowcount == 0:
+            row = conn.execute(
+                """SELECT id FROM source_documents
+                   WHERE client_token = ? AND client_doc_id = ?""",
+                (client_token, client_doc_id),
+            ).fetchone()
+            doc_id = row["id"]
+            _touch_source_document(conn, doc_id, **touch)
+        return doc_id
+
+    # Legacy path (no token or no client_doc_id): no unique constraint, so a
+    # lookup is unavoidable. Same key wins; a different token stays separate.
+    existing = _find_keyed_document(conn, client_token, client_doc_id)
+    if existing is None and client_token and client_doc_id is None:
         existing = conn.execute(
             """SELECT id FROM source_documents
                WHERE client_token = ? AND doc_class = ?""",
             (client_token, doc_class),
         ).fetchone()
-    if existing:
-        doc_id = existing["id"]
-        updates: list[str] = []
-        values: list[Any] = []
-        for col, val in (
-            ("job_id", job_id), ("source_name", source_name), ("pdf_sha256", pdf_sha256),
-            ("pdf_path", pdf_path), ("page_count", page_count), ("text_p1_3", text_p1_3),
-        ):
-            if val is not None:
-                updates.append(f"{col} = ?")
-                values.append(val)
-        if updates:
-            values.append(doc_id)
-            conn.execute(f"UPDATE source_documents SET {', '.join(updates)} WHERE id = ?", values)
-        return doc_id
+    if existing is not None:
+        _touch_source_document(conn, existing["id"], **touch)
+        return existing["id"]
 
     doc_id = _new_id()
     conn.execute(
@@ -307,6 +345,20 @@ def upsert_source_document(
          pdf_sha256, pdf_path, page_count, text_p1_3, _now()),
     )
     return doc_id
+
+
+def _reset_for_class_change(
+    conn: sqlite3.Connection, document_id: str, old_class: str
+) -> None:
+    """A reclassify invalidates the old class's result and its corrections.
+
+    Correction snapshots describe the old schema; carrying them into a new
+    class table would mix two shapes in one effective JSON.
+    """
+    conn.execute(
+        f"DELETE FROM {_table(old_class)} WHERE document_id = ?", (document_id,)
+    )
+    conn.execute("DELETE FROM correction_sessions WHERE document_id = ?", (document_id,))
 
 
 def get_source_document(conn: sqlite3.Connection, document_id: str) -> dict[str, Any] | None:
@@ -349,13 +401,16 @@ def save_result(
     """Zapisz wynik do właściwego magazynu. Zwraca False, gdy już istnieje
     (wynik modelu nie jest nadpisywany)."""
     table = _table(doc_class)
-    existing = conn.execute(
-        f"SELECT 1 FROM {table} WHERE document_id = ?", (document_id,)
-    ).fetchone()
-    if existing:
-        return False
-    conn.execute(
-        f"""INSERT INTO {table}
+    doc = get_source_document(conn, document_id)
+    if doc is not None and doc["doc_class"] != doc_class:
+        raise ValueError(
+            f"doc_class mismatch for {document_id!r}: document is "
+            f"{doc['doc_class']!r}, not {doc_class!r}"
+        )
+    # INSERT OR IGNORE + rowcount replaces the racy check-then-write. The
+    # document_id is the primary key, so a repeat ingest is silently ignored.
+    cur = conn.execute(
+        f"""INSERT OR IGNORE INTO {table}
             (document_id, canonical_json, provenance_json, model_version,
              config_version, created_at)
             VALUES (?, ?, ?, ?, ?, ?)""",
@@ -363,7 +418,10 @@ def save_result(
          _dumps(provenance_json) if provenance_json is not None else None,
          model_version, config_version, _now()),
     )
-    return True
+    created = cur.rowcount > 0
+    # SELECT confirms the row the caller will read back is the one we kept.
+    conn.execute(f"SELECT 1 FROM {table} WHERE document_id = ?", (document_id,)).fetchone()
+    return created
 
 
 def get_result(conn: sqlite3.Connection, doc_class: str, document_id: str) -> dict[str, Any] | None:
@@ -428,6 +486,16 @@ def create_correction_session(
     return session_id
 
 
+def _latest_effective_json(conn: sqlite3.Connection, document_id: str, fallback: str) -> str:
+    """Latest corrected snapshot, or the pristine model output when none exists."""
+    row = conn.execute(
+        """SELECT corrected_json FROM correction_sessions WHERE document_id = ?
+           ORDER BY created_at DESC, rowid DESC LIMIT 1""",
+        (document_id,),
+    ).fetchone()
+    return row["corrected_json"] if row else fallback
+
+
 def save_corrections(
     conn: sqlite3.Connection,
     *,
@@ -438,51 +506,49 @@ def save_corrections(
     config_version: str | None = None,
 ) -> str:
     """Dodaj poprawki per pole do magazynu 4 (bez zmiany magazynu 1-3)."""
-    doc = get_source_document(conn, document_id)
-    if doc is None:
-        raise ValueError(f"unknown document_id {document_id!r}")
-    result = get_result(conn, doc["doc_class"], document_id)
-    if result is None:
-        raise ValueError(f"document {document_id!r} has no stored result")
+    # The whole read-modify-write runs under one write lock. Two reviewers
+    # editing different fields must stack, not overwrite each other.
+    with _immediate(conn):
+        doc = get_source_document(conn, document_id)
+        if doc is None:
+            raise ValueError(f"unknown document_id {document_id!r}")
+        result = get_result(conn, doc["doc_class"], document_id)
+        if result is None:
+            raise ValueError(f"document {document_id!r} has no stored result")
 
-    # Base this session on the CURRENT effective JSON (latest session's
-    # corrected_json, else the pristine model output) so earlier fixes survive.
-    latest = conn.execute(
-        """SELECT corrected_json FROM correction_sessions WHERE document_id = ?
-           ORDER BY created_at DESC, rowid DESC LIMIT 1""",
-        (document_id,),
-    ).fetchone()
-    base_json = latest["corrected_json"] if latest else result["canonical_json"]
-    # predicted_value = the value the user is currently correcting (current
-    # effective value), NOT the pristine output, so training pairs reflect what
-    # the model actually produced for this session. Stores 1-3 stay immutable;
-    # get_effective_result()["predicted_json"] still returns the original output.
-    predicted = json.loads(base_json)
-    corrected = json.loads(base_json)
-    method_by_path: dict[str, Any] = {}
-    provenance = json.loads(result["provenance_json"]) if result["provenance_json"] else {}
-    if isinstance(provenance, dict):
-        method_by_path = provenance.get("fields", provenance)
+        base_json = _latest_effective_json(
+            conn, document_id, result["canonical_json"]
+        )
+        # predicted_value = the value the user is currently correcting (current
+        # effective value), NOT the pristine output, so training pairs reflect
+        # what was actually on screen. Stores 1-3 stay immutable;
+        # get_effective_result()["predicted_json"] returns the original output.
+        predicted = json.loads(base_json)
+        corrected = json.loads(base_json)
+        method_by_path: dict[str, Any] = {}
+        provenance = json.loads(result["provenance_json"]) if result["provenance_json"] else {}
+        if isinstance(provenance, dict):
+            method_by_path = provenance.get("fields", provenance)
 
-    for item in items:
-        path = item["field_path"]
-        set_by_path(corrected, path, item.get("corrected_value"))
-        if item.get("method") or item.get("confidence") is not None:
-            method_by_path[path] = {k: item[k] for k in
-                                    ("method", "confidence", "page", "bbox", "quote")
-                                    if k in item}
+        for item in items:
+            path = item["field_path"]
+            set_by_path(corrected, path, item.get("corrected_value"))
+            if item.get("method") or item.get("confidence") is not None:
+                method_by_path[path] = {k: item[k] for k in
+                                        ("method", "confidence", "page", "bbox", "quote")
+                                        if k in item}
 
-    return create_correction_session(
-        conn,
-        document_id=document_id,
-        predicted=predicted,
-        corrected=corrected,
-        reviewer=reviewer,
-        text_p1_3=doc.get("text_p1_3"),
-        method_by_path=method_by_path,
-        model_version=model_version,
-        config_version=config_version,
-    )
+        return create_correction_session(
+            conn,
+            document_id=document_id,
+            predicted=predicted,
+            corrected=corrected,
+            reviewer=reviewer,
+            text_p1_3=doc.get("text_p1_3"),
+            method_by_path=method_by_path,
+            model_version=model_version,
+            config_version=config_version,
+        )
 
 
 def ingest_document(
@@ -511,6 +577,9 @@ def ingest_document(
     """
     if not isinstance(canonical_json, dict):
         raise ValueError("canonical_json must be an object")
+
+    # Capture the old class before upsert (which now refreshes doc_class).
+    old = _find_keyed_document(conn, client_token, client_doc_id)
     doc_id = upsert_source_document(
         conn,
         doc_class=doc_class,
@@ -520,6 +589,9 @@ def ingest_document(
         pdf_sha256=pdf_sha256,
         text_p1_3=text_p1_3,
     )
+    if old is not None and old["doc_class"] != doc_class:
+        _reset_for_class_change(conn, doc_id, old["doc_class"])
+
     created = save_result(
         conn,
         doc_class=doc_class,
@@ -532,14 +604,24 @@ def ingest_document(
     session_id = None
     if not created:
         stored = get_result(conn, doc_class, doc_id)
-        base = json.loads(stored["canonical_json"])
-        if base != canonical_json:
+        pristine = json.loads(stored["canonical_json"])
+        # Only the fields the new model output actually changed get applied.
+        # Re-applying the whole submission would silently revert corrections
+        # on fields the caller did not touch.
+        model_diff = diff_json(pristine, canonical_json)
+        if model_diff:
+            base = json.loads(_latest_effective_json(
+                conn, doc_id, stored["canonical_json"]
+            ))
+            corrected = json.loads(_dumps(base))
+            for path, _old_value, new_value in model_diff:
+                set_by_path(corrected, path, new_value)
             source_doc = get_source_document(conn, doc_id)
             session_id = create_correction_session(
                 conn,
                 document_id=doc_id,
                 predicted=base,
-                corrected=canonical_json,
+                corrected=corrected,
                 reviewer=reviewer,
                 text_p1_3=text_p1_3 or (source_doc or {}).get("text_p1_3"),
                 model_version=model_version,
@@ -663,27 +745,3 @@ def export_training_pairs(
         })
     return out
 
-
-def approve_document(
-    conn: sqlite3.Connection,
-    *,
-    document_id: str,
-    final_json: dict[str, Any] | None = None,
-    embedding: list[float] | None = None,
-) -> None:
-    """Zapisz dokument do zbioru few-shot (poziom 1 planu AI)."""
-    doc = get_source_document(conn, document_id)
-    if doc is None:
-        raise ValueError(f"unknown document_id {document_id!r}")
-    effective = get_effective_result(conn, document_id)
-    payload = final_json if final_json is not None else effective["canonical_json"]
-    conn.execute(
-        """INSERT INTO approved_docs (doc_id, doc_class, text_p1_3, final_json, embedding, created_at)
-           VALUES (?, ?, ?, ?, ?, ?)
-           ON CONFLICT(doc_id) DO UPDATE SET
-             final_json = excluded.final_json,
-             embedding = excluded.embedding,
-             created_at = excluded.created_at""",
-        (document_id, doc["doc_class"], doc.get("text_p1_3"), _dumps(payload),
-         _dumps(embedding) if embedding is not None else None, _now()),
-    )

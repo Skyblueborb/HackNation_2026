@@ -20,8 +20,11 @@ services:
       dockerfile: backend/Dockerfile
     environment:
       API_TOKEN: ${API_TOKEN:-}
+      # Tylko lokalny dev: 1 wyłącza autoryzację, gdy API_TOKEN jest puste.
+      O2J_DEV_NO_AUTH: ${O2J_DEV_NO_AUTH:-}
       API_KEY: ${API_KEY:-dev-key}
       O2J_DB_PATH: /data/o2j.db
+      O2J_MAX_UPLOAD_MB: ${O2J_MAX_UPLOAD_MB:-25}
       O2J_CONFIG_PATH: /app/configs
       O2J_STRICT_VALIDATION: ${O2J_STRICT_VALIDATION:-0}
       # Frontend chodzi przez nginx na porcie 3000.

@@ -1,6 +1,8 @@
 import asyncio
 import io
 import sys
+import threading
+import time
 import types
 
 from PIL import Image
@@ -84,3 +86,54 @@ def test_registry_wraps_callable():
     sys.modules["fake_llm_callable"] = module
     loaded = load_llm_processor("fake_llm_callable:factory")
     assert loaded.process(OCRDocument("b", "m", ())) == {"pages": 0}
+
+
+def test_run_ocr_async_serializes_ocr_but_not_llm():
+    entered = asyncio.Event()
+    release = threading.Event()
+    active = {"count": 0, "max": 0}
+
+    class SlowExtractor:
+        def extract_page(self, image):
+            active["count"] += 1
+            active["max"] = max(active["max"], active["count"])
+            time.sleep(0.02)
+            active["count"] -= 1
+            return "text"
+
+    class BlockingProcessor:
+        def __init__(self, loop):
+            self.loop = loop
+
+        def process(self, document):
+            self.loop.call_soon_threadsafe(entered.set)
+            release.wait(timeout=2)
+            return {"ok": True}
+
+    async def scenario():
+        loop = asyncio.get_running_loop()
+        first = asyncio.create_task(
+            run_ocr_async(
+                pdf_bytes(),
+                SlowExtractor(),
+                backend="test",
+                model="m",
+                processor=BlockingProcessor(loop),
+                filename="a.pdf",
+            )
+        )
+        await asyncio.wait_for(entered.wait(), timeout=2)
+        second = asyncio.create_task(
+            run_ocr_async(
+                pdf_bytes(), SlowExtractor(), backend="test", model="m", filename="b.pdf"
+            )
+        )
+        # Second request finishes OCR while first still waits on the LLM.
+        await asyncio.wait_for(second, timeout=2)
+        assert not first.done()
+        release.set()
+        await asyncio.wait_for(first, timeout=2)
+        assert first.result()["llm"] == {"ok": True}
+
+    asyncio.run(scenario())
+    assert active["max"] == 1

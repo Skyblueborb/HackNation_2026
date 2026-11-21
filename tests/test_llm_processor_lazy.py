@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import importlib.util
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -69,4 +71,40 @@ def test_processor_is_cached(monkeypatch: pytest.MonkeyPatch) -> None:
     first = adapter.get_processor()
     second = adapter.get_processor()
     assert first is second
-    assert adapter.processor is first
+    assert adapter._processor is first
+
+
+def test_registry_proxy_defers_build(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(adapter, "_processor", None)
+    proxy = load_llm_processor(SPEC)
+    assert hasattr(proxy, "process")
+    assert adapter._processor is None
+
+
+def test_proxy_delegates_to_built_processor(monkeypatch: pytest.MonkeyPatch) -> None:
+    sentinel = object()
+
+    class Fake:
+        def process(self, document):
+            return sentinel
+
+    monkeypatch.setattr(adapter, "_processor", Fake())
+    proxy = load_llm_processor(SPEC)
+    assert proxy.process(None) is sentinel
+
+
+def test_concurrent_get_processor_builds_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_processor_build(monkeypatch)
+    calls = []
+    base = adapter.LabLLMProcessor
+
+    def counting():
+        calls.append(1)
+        time.sleep(0.02)
+        return base()
+
+    monkeypatch.setattr(adapter, "LabLLMProcessor", counting)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _: adapter.get_processor(), range(8)))
+    assert len(calls) == 1
+    assert all(result is results[0] for result in results)

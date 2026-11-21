@@ -6,13 +6,22 @@ sposób pomiaru czasu i diagnozy błędów.
 
 ## 1. Szybki start
 
-Zakładamy, że serwery już działają:
+Ścieżki w tym dokumencie są przenośne. Ustaw je raz w powłoce:
 
 ```bash
-cd /Users/skyblueborb/Projects/HackNation_2026
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+DATA_ROOT="/absolute/path/to/hacknation-2026-data"   # katalog NAD dane/
+cd "$REPO_ROOT"
 uv sync --extra local --extra serve --extra lab
+```
 
-# LLM (terminal 1) — lokalny profil na Macu
+`DATA_ROOT` to root osobnego repo z danymi konkursowymi; zawiera katalog
+`dane/`. Można go też wskazać przez `configs/paths.yaml` lub `O2J_DATA_ROOT`.
+
+Uruchom serwer LLM:
+
+```bash
+# terminal 1 — lokalny profil na Macu
 uv run lab serve --model local-llm
 # alternatywa CPU: uv run local-llm serve --cpu
 ```
@@ -27,7 +36,7 @@ Konwersja jednego PDF-a do JSON:
 
 ```bash
 uv run ocr-pdf2json \
-  /Users/skyblueborb/Projects/hacknation-2026/dane/przyklad_01/potwierdzenie_przelewu.pdf \
+  "$DATA_ROOT/dane/przyklad_01/potwierdzenie_przelewu.pdf" \
   --out-dir output
 ```
 
@@ -78,36 +87,34 @@ uv run ocr-pdf2json przelew.pdf \
 ```
 
 Tryb zdalny:
-- nie sprawdza lokalnych wag ani lokalnego `llama-server`,
-- wysyła PDF do `POST /api/analyze`,
+- nie sprawdza lokalnych wag ani lokalnego serwera LLM,
+- wysyła PDF do `POST /api/analyze` z nagłówkiem `X-API-Token`,
 - typ dokumentu wywnioskuje z nazwy pliku (`--doc-class` nadpisuje),
 - zapisuje `<basename>.json` jak w trybie lokalnym,
 - wypisuje czas całego żądania.
 
-Backend musi nasłuchiwać na `0.0.0.0:8000` (jest), a maszyna kliencka musi
-mieć dostęp do portu 8000. Ustaw `API_TOKEN` na backendzie i przekaż ten sam
-token przez `--api-token` / `O2J_API_TOKEN`.
+Backend musi nasłuchiwać na `0.0.0.0:8000` i być osiągalny z maszyny
+klienckiej. Ustaw `API_TOKEN` na backendzie i przekaż ten sam token przez
+`--api-token` albo `O2J_API_TOKEN`. Uwaga: `docker-compose.yml` wiąże port
+`8000` z `127.0.0.1`, więc dla LAN użyj `uvicorn ... --host 0.0.0.0`.
 
-## 3. Modele
+## 3. Modele i wagi
 
-| Rola | Konfiguracja | Model | Wagi | Środowisko | Port |
-|---|---|---|---|---|---|
-| OCR, domyślny CLI | `MLX_MODEL=models/LightOnOCR-3-0.8B-mlx-8bit` | `fwgpiyawudk/LightOnOCR-3-0.8B-MLX-8bit` | ~955 MB, 8-bit MLX | Mac / MLX | — |
-| OCR, dokładny | `MLX_MODEL=models/LightOnOCR-3-4B-mlx-8bit` | `prithivMLmods/LightOnOCR-3-4B-MLX` (`8bit/`) | ~4.8 GB, 8-bit MLX | Mac / MLX | — |
-| LLM lokalny | `OCR_LLM_MODEL=local-llm` | `Qwen/Qwen3-4B-GGUF:Q4_K_M` | GGUF Q4_K_M | Mac Metal lub CPU | 8081 |
-| LLM produkcyjny | `OCR_LLM_MODEL=qwen3-8b-l4` | `Qwen/Qwen3-8B-GGUF:Q4_K_M` | GGUF Q4_K_M | NVIDIA L4 (`-ngl 99 -fa on`) | 8082 |
-| OCR w backendzie | `WEB_OCR_BACKEND=text` | warstwa tekstowa PDF (pdfplumber) | brak wag | dowolny CPU | — |
+Profile LLM (ID, repozytoria, porty i flagi serwera) są wyłącznie w
+`configs/models.yaml`. Domyślny profil CLI to `local-llm`; wagi OCR domyślnie
+`models/LightOnOCR-3-0.8B-mlx-8bit`.
 
-Pobieranie wag:
+Pobieranie wag OCR na Maca:
 
 ```bash
-bash scripts/make-mlx-model-08b.sh   # 0.8B
-bash scripts/make-mlx-model.sh       # 4B
+bash scripts/make-mlx-model-08b.sh   # 0.8B, szybki (domyślny w CLI)
+bash scripts/make-mlx-model.sh       # 4B, dokładny
 ```
 
 Backend wybiera źródło tekstu zmienną `WEB_OCR_BACKEND`: `text`, `cuda`, `mlx`.
 Dane konkursowe mają warstwę tekstową, więc `text` jest najszybszą ścieżką
 lokalną; OCR obrazowy jest potrzebny tylko dla prawdziwych skanów.
+Szczegóły: `docs/BACKEND.md` i `docs/llm-runtime.md`.
 
 ## 4. Wydajność — zmierzone wartości
 
@@ -141,14 +148,15 @@ CLI wypisuje czasy sam:
 render=0.07s ocr=6.00s llm=3.43s total=9.49s
 ```
 
-Dla API użyj `curl -w`:
+Dla API użyj `curl -w` (jeśli backend ma `API_TOKEN`, dodaj
+`-H "X-API-Token: $API_TOKEN"`):
 
 ```bash
 curl -sS -X POST http://localhost:8000/api/analyze \
   -F 'client_token=benchmark' -F 'doc_class=przelew' \
   -F 'client_doc_id=bench-przelew-1' \
-  -F 'file=@/Users/skyblueborb/Projects/hacknation-2026/dane/przyklad_01/potwierdzenie_przelewu.pdf' \
-  -o /tmp/e2e.json \
+  -F "file=@$DATA_ROOT/dane/przyklad_01/potwierdzenie_przelewu.pdf" \
+  -o "$REPO_ROOT/work/e2e.json" \
   -w 'http=%{http_code} total=%{time_total}s\n'
 ```
 
@@ -158,7 +166,7 @@ Dla `lab`:
 time uv run lab predict-one \
   --set przyklad_01 --class potwierdzenie_przelewu \
   --model local-llm --no-manage-server \
-  --data-root /Users/skyblueborb/Projects/hacknation-2026
+  --data-root "$DATA_ROOT"
 ```
 
 `--data-root` musi wskazywać katalog **nad** `dane/`, nie sam `dane/`.
@@ -190,8 +198,9 @@ Najważniejsze komendy:
 | `predict-one --set ... --class ... --model local-llm` | jeden dokument, pełny pipeline tekst + LLM |
 | `run --config configs/experiments/E0_baseline.yaml --model local-llm --split all --limit 1` | krótki run z F1 |
 | `board` | tabela wyników z `work/runs/` |
-| `split`, `eval`, `collect`, `plots`, `report` | narzędzia badawcze |
-| `ocr-smoke`, `ocr-prepare`, `ocr-run`, `ocr-eval` | osobny tor benchmarku OCR |
+| `split`, `eval` | narzędzia badawcze |
+| `collect`, `plots`, `report`, `ocr-prepare`, `ocr-run`, `ocr-eval` | stuby (`NotImplementedError`) |
+| `ocr-smoke` | dymny test OCR (jeden silnik, jeden poziom szumu) |
 
 Uwaga: `lab run` czyta warstwę tekstową (`pdfplumber`), nie robi OCR obrazowego.
 Pełny obrazowy flow idzie przez `ocr-pdf2json` albo `/api/analyze`.

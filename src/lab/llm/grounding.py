@@ -12,15 +12,15 @@ from typing import Any
 from rapidfuzz import fuzz, process
 
 from o2jcore.normalize.values import normalize
-from o2jcore.spec.models import DocClassSpec
+from o2jcore.spec.models import DocClassSpec, split_segment
 
 
 def _targets(container: Any, segments: list[str]) -> list[tuple[dict, str]]:
     if not segments or not isinstance(container, dict):
         return []
     head, *rest = segments
-    if head.endswith("[]"):
-        key = head[:-2]
+    key, is_list = split_segment(head)
+    if is_list:
         items = container.get(key)
         if not isinstance(items, list):
             return []

@@ -1,8 +1,10 @@
 # OCR LLM serving path — short design
 
-> SUPERSEDED 2026-11-21: the demo uses mlx-vlm with the prebuilt 8-bit model
-> `BaranH/LightOnOCR-3-4B-mlx-8Bit`. llama.cpp/GGUF and PyTorch backends were
-> removed. Pages render at 400 DPI, longest edge 2048 px.
+> **ARCHIVED 2026-11-21 — historical only.** Describes the removed
+> `OCR_BACKEND=llama_cpp` path and deleted files (`src/lab/serve.py`,
+> `Dockerfile`, root `requirements.txt`). Current services: `ocr-api` (CUDA)
+> and `local-ai` (MLX), with prebuilt 8-bit MLX weights downloaded by
+> `scripts/make-mlx-model.sh`. Pages render at 400 DPI, longest edge 2048 px.
 
 ## Intent
 

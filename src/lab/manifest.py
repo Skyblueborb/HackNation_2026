@@ -70,6 +70,7 @@ class RunManifest:
     prompts_sha256: dict[str, str] = field(default_factory=dict)
     server: dict[str, Any] = field(default_factory=dict)
     params: dict[str, Any] = field(default_factory=dict)
+    experiment_config: dict[str, Any] = field(default_factory=dict)
     split: str = "all"
     splits_sha256: str | None = None
     data_commit: str | None = None
@@ -102,6 +103,7 @@ def new_manifest(
     prompts_sha256: dict[str, str] | None = None,
     server: dict | None = None,
     params: dict | None = None,
+    experiment_config: dict | None = None,
 ) -> RunManifest:
     """Build a RunManifest with started=now, finished=None."""
     repo_root = Path(__file__).resolve().parents[2]
@@ -130,6 +132,7 @@ def new_manifest(
         prompts_sha256=dict(prompts_sha256 or {}),
         server=dict(server or {}),
         params=dict(params or {}),
+        experiment_config=dict(experiment_config or {}),
         split=split,
         splits_sha256=splits_sha256,
         data_commit=data_commit,

@@ -105,6 +105,39 @@ def test_call_json_retries_same_structured_request_on_connection_error():
     assert "response_format" in calls[1]
 
 
+def test_call_json_retries_transient_error_without_schema():
+    calls: list[dict] = []
+
+    class ServiceUnavailable(RuntimeError):
+        status_code = 503
+
+    def transport(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise ServiceUnavailable("service temporarily unavailable")
+        return _response('{"ok": true}')
+
+    response = _client(transport).call_json("s", "u")
+
+    assert response.structured is False
+    assert len(calls) == 2
+    assert "response_format" not in calls[0]
+    assert "response_format" not in calls[1]
+
+
+def test_call_json_does_not_retry_non_transient_error_without_schema():
+    calls: list[dict] = []
+
+    def transport(**kwargs):
+        calls.append(kwargs)
+        raise RuntimeError("400 bad request")
+
+    with pytest.raises(RuntimeError, match="bad request"):
+        _client(transport).call_json("s", "u")
+
+    assert len(calls) == 1
+
+
 def test_call_json_raises_on_empty_content():
     def transport(**kwargs):
         return _response("   ")

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field as dc_field
 
-from .models import DocClassSpec, FieldSpec
+from .models import DocClassSpec, FieldSpec, split_segment
 
 
 @dataclass
@@ -38,12 +38,6 @@ class ObjectNode:
     children: dict[str, "LeafNode | ListNode | ObjectNode"] = dc_field(default_factory=dict)
 
 
-def _segment_key(segment: str) -> tuple[str, bool]:
-    if segment.endswith("[]"):
-        return segment[:-2], True
-    return segment, False
-
-
 def build_tree(spec: DocClassSpec) -> ObjectNode:
     """Build the root ObjectNode for a document class, preserving YAML field order."""
     root = ObjectNode()
@@ -51,7 +45,7 @@ def build_tree(spec: DocClassSpec) -> ObjectNode:
         segments = f.segments
         node: ObjectNode = root
         for i, segment in enumerate(segments):
-            key, is_list_segment = _segment_key(segment)
+            key, is_list_segment = split_segment(segment)
             is_last = i == len(segments) - 1
 
             if is_last:

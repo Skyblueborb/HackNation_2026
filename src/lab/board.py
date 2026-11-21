@@ -64,6 +64,11 @@ def collect_run_summaries(runs_root: Path) -> list[dict]:
         n_files = metrics.get("n_files_evaluated") or 0
         invalid = metrics.get("invalid_json") or 0
         missing = metrics.get("missing_pred") or 0
+        # A document can appear in both counters (pipeline-level invalid_json
+        # plus missing_pred when no pred file was written). Count each doc once.
+        bad_docs = metrics.get("json_invalid_or_missing")
+        if bad_docs is None:
+            bad_docs = invalid + missing
         null_stats = metrics.get("null_stats") or {}
         null_gold = (null_stats.get("predicted_value_gold_null") or 0) + (null_stats.get("both_null") or 0)
 
@@ -76,7 +81,7 @@ def collect_run_summaries(runs_root: Path) -> list[dict]:
                 "f1_exact_skip": f1_exact_skip,
                 "f1_fuzzy_skip": f1_fuzzy_skip,
                 "n_files_evaluated": metrics.get("n_files_evaluated"),
-                "json_validity_rate": (n_files - invalid - missing) / n_files if n_files else None,
+                "json_validity_rate": (n_files - bad_docs) / n_files if n_files else None,
                 "null_hallucination_rate": (
                     (null_stats.get("predicted_value_gold_null") or 0) / null_gold if null_gold else None
                 ),

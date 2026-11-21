@@ -115,6 +115,7 @@ class EvalResult:
     invalid_json: int = 0
     retries: int = 0
     missing_pred: int = 0
+    json_invalid_or_missing: int = 0
     n_files_evaluated: int = 0
     mismatches: list[dict[str, Any]] = field(default_factory=list)
     model_id: str | None = None
@@ -197,15 +198,18 @@ def evaluate_run(
             pred_obj: dict = {}
             if not pred_path.exists():
                 result.missing_pred += 1
+                result.json_invalid_or_missing += 1
             else:
                 raw = pred_path.read_bytes()
                 if len(raw) == 0:
                     result.invalid_json += 1
+                    result.json_invalid_or_missing += 1
                 else:
                     try:
                         pred_obj = json.loads(raw.decode("utf-8"))
                     except (json.JSONDecodeError, UnicodeDecodeError):
                         result.invalid_json += 1
+                        result.json_invalid_or_missing += 1
                         pred_obj = {}
                     if not isinstance(pred_obj, dict):
                         pred_obj = {}
@@ -214,10 +218,15 @@ def evaluate_run(
 
             file_counts = _empty_counts_map()
 
+            # Only pred-only extras are false positives. If gold carries the
+            # same '!extra:' key it is a quirk of the gold document, not a
+            # spurious prediction, and must not enter the counts at all.
             extra_pred_paths = {
-                p for p in pred_flat if p.startswith("!extra:") and pred_flat[p] is not None
+                p
+                for p in pred_flat
+                if p.startswith("!extra:") and pred_flat[p] is not None and p not in gold_flat
             }
-            all_paths = set(gold_flat.keys()) | extra_pred_paths
+            all_paths = {p for p in gold_flat if not p.startswith("!extra:")} | extra_pred_paths
 
             field_by_path = {f.path: f for f in spec.fields}
 
@@ -314,6 +323,7 @@ def write_metrics(result: EvalResult, out_path: Path) -> None:
         "invalid_json": result.invalid_json,
         "retries": result.retries,
         "missing_pred": result.missing_pred,
+        "json_invalid_or_missing": result.json_invalid_or_missing,
         "overall": {mode: _counts_to_dict(result.overall[mode]) for mode in _MODES},
         "per_class": {
             cid: {mode: _counts_to_dict(counts_map[mode]) for mode in _MODES}

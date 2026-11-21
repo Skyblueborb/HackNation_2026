@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
 
 from lab.llm.client import LLMClient, LLMResponse
 from lab.llm.prompts import PromptSet
@@ -70,13 +69,3 @@ def classify_document(
     )
     label = _parse_label(response.text)
     return (None if label == "nieznany" else label), response
-
-
-def classification_dict(
-    class_id: str | None, response: LLMResponse | None
-) -> dict[str, Any]:
-    return {
-        "class": class_id,
-        "prompt_tokens": response.prompt_tokens if response else 0,
-        "completion_tokens": response.completion_tokens if response else 0,
-    }

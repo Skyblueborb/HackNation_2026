@@ -16,12 +16,16 @@ from ocr_common.ports import OCRDocument, OCRPage
 DEFAULT_OCR_MODEL = "models/LightOnOCR-3-0.8B-mlx-8bit"
 DEFAULT_LLM_PROFILE = "local-llm"
 
+LLM_HEALTH_TIMEOUT = float(os.environ.get("OCR_LLM_HEALTH_TIMEOUT", "5"))
+# Match LLMClient's default 900s timeout so a long extraction is not cut short.
+REMOTE_TIMEOUT = float(os.environ.get("OCR_REMOTE_TIMEOUT", "900.0"))
 
-def llm_health(base_url: str) -> bool:
+
+def llm_health(base_url: str, timeout: float = LLM_HEALTH_TIMEOUT) -> bool:
     root = base_url.rsplit("/v1", 1)[0]
     try:
-        with urllib.request.urlopen(f"{root}/health", timeout=5) as response:
-            return 200 <= response.status < 500
+        with urllib.request.urlopen(f"{root}/health", timeout=timeout) as response:
+            return response.status == 200
     except Exception:
         return False
 
@@ -123,6 +127,7 @@ def post_analyze(
     doc_class: str,
     client_token: str,
     client_doc_id: str,
+    timeout: float | None = None,
 ) -> dict[str, Any]:
     """POST one PDF to a remote backend /api/analyze."""
     import httpx
@@ -139,7 +144,7 @@ def post_analyze(
             },
             files={"file": (pdf.name, handle, "application/pdf")},
             headers=headers,
-            timeout=300.0,
+            timeout=REMOTE_TIMEOUT if timeout is None else timeout,
         )
     response.raise_for_status()
     return response.json()

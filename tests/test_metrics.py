@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from lab.eval.compare import Verdict
-from lab.eval.metrics import Counts
+from lab.eval.metrics import Counts, evaluate_run
+from o2jcore.spec.models import DocClassSpec, FieldSpec
 
 
 def test_counts_add_fpfn_increments_both_fp_and_fn():
@@ -78,3 +81,74 @@ def test_unknown_null_policy_raises():
     c = Counts(tp=1)
     with pytest.raises(ValueError):
         c.precision_recall_f1("bogus")
+
+
+# --- evaluate_run: extras and json validity ----------------------------------
+
+
+def _tiny_specs() -> dict:
+    spec = DocClassSpec(
+        id="tiny",
+        title="Tiny",
+        pdf_stem="tiny",
+        gold_stem="tiny",
+        fields=[FieldSpec(path="a", kind="string", nullable=True, normalizer="text")],
+    )
+    return {"tiny": spec}
+
+
+def _gold_pred_dirs(tmp_path, *, pred_obj=None):
+    gold = tmp_path / "gold"
+    pred = tmp_path / "pred"
+    for root in (gold, pred):
+        (root / "przyklad_01").mkdir(parents=True)
+    (gold / "przyklad_01" / "tiny.json").write_text(json.dumps({"a": "x"}), encoding="utf-8")
+    if pred_obj is not None:
+        (pred / "przyklad_01" / "tiny.json").write_text(json.dumps(pred_obj), encoding="utf-8")
+    return gold, pred
+
+
+def test_gold_side_extra_keys_are_not_false_positives(tmp_path):
+    # The gold document itself carries an unexpected key. An identical pred
+    # must score perfectly -- gold quirks are not model mistakes.
+    gold, pred = _gold_pred_dirs(tmp_path, pred_obj={"a": "x", "gold_only": "junk"})
+    (gold / "przyklad_01" / "tiny.json").write_text(
+        json.dumps({"a": "x", "gold_only": "junk"}), encoding="utf-8"
+    )
+
+    result = evaluate_run(pred, gold, _tiny_specs(), set_ids=["przyklad_01"])
+
+    for mode in ("exact", "fuzzy"):
+        c = result.overall[mode]
+        assert (c.tp, c.fp, c.fn) == (1, 0, 0)
+
+
+def test_only_pred_only_extra_keys_are_false_positives(tmp_path):
+    gold, pred = _gold_pred_dirs(tmp_path, pred_obj={"a": "x", "pred_only": "junk"})
+
+    result = evaluate_run(pred, gold, _tiny_specs(), set_ids=["przyklad_01"])
+
+    for mode in ("exact", "fuzzy"):
+        c = result.overall[mode]
+        assert c.fp == 1
+        assert c.fn == 0
+
+
+def test_json_invalid_or_missing_counts_each_doc_once(tmp_path):
+    gold = tmp_path / "gold"
+    pred = tmp_path / "pred"
+    for set_id in ("przyklad_01", "przyklad_02", "przyklad_03"):
+        (gold / set_id).mkdir(parents=True)
+        (pred / set_id).mkdir(parents=True)
+        (gold / set_id / "tiny.json").write_text(json.dumps({"a": "x"}), encoding="utf-8")
+    (pred / "przyklad_01" / "tiny.json").write_text(json.dumps({"a": "x"}), encoding="utf-8")
+    (pred / "przyklad_03" / "tiny.json").write_bytes(b"")
+
+    result = evaluate_run(
+        pred, gold, _tiny_specs(), set_ids=["przyklad_01", "przyklad_02", "przyklad_03"]
+    )
+
+    assert result.n_files_evaluated == 3
+    assert result.missing_pred == 1
+    assert result.invalid_json == 1
+    assert result.json_invalid_or_missing == 2

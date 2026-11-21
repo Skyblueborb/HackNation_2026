@@ -8,6 +8,7 @@ Uruchamianie (wymaga PYTHONPATH z src/):
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from fastapi.testclient import TestClient
@@ -281,6 +282,7 @@ def test_export_training_pairs_filters_sessions_with_bad_items(tmp_path):
 def test_api_health_and_ingest(tmp_path, monkeypatch):
     monkeypatch.setenv("O2J_DB_PATH", str(tmp_path / "api.db"))
     monkeypatch.delenv("API_TOKEN", raising=False)
+    monkeypatch.setenv("O2J_DEV_NO_AUTH", "1")
     monkeypatch.delenv("O2J_STRICT_VALIDATION", raising=False)
 
     from backend.main import app
@@ -317,3 +319,116 @@ def test_api_requires_token_when_configured(tmp_path, monkeypatch):
     with TestClient(app) as client:
         assert client.get("/api/documents").status_code == 401
         assert client.get("/api/documents", headers={"X-API-Token": "sekret"}).status_code == 200
+
+
+# --- klucz dokumentu: (client_token, client_doc_id) ------------------------
+
+
+def test_client_doc_id_is_scoped_by_client_token(tmp_path):
+    """Ten sam identyfikator pliku u dwóch klientów to dwa osobne dokumenty."""
+    init_db(tmp_path / "o2j.db")
+    with db(tmp_path / "o2j.db") as conn:
+        a = repo.ingest_document(conn, client_token="judge-a", client_doc_id="doc-1",
+                                 doc_class="przelew", canonical_json={"x": 1})
+        b = repo.ingest_document(conn, client_token="judge-b", client_doc_id="doc-1",
+                                 doc_class="przelew", canonical_json={"x": 2})
+        assert a["document_id"] != b["document_id"]
+        assert a["created"] and b["created"]
+
+        dup = repo.ingest_document(conn, client_token="judge-a", client_doc_id="doc-1",
+                                   doc_class="przelew", canonical_json={"x": 1})
+        assert dup["document_id"] == a["document_id"]
+        assert dup["created"] is False
+        assert dup["correction_session_id"] is None
+
+        assert [d["client_token"] for d in repo.list_source_documents(conn)] == [
+            "judge-a", "judge-b"
+        ]
+
+
+def test_reingest_class_change_updates_doc_class(tmp_path):
+    init_db(tmp_path / "o2j.db")
+    przelew = {"przelew_bankowy": {"kwota": 10000.0}}
+    with db(tmp_path / "o2j.db") as conn:
+        first = repo.ingest_document(conn, client_token="t", client_doc_id="f1",
+                                     doc_class="odwolanie",
+                                     canonical_json=_base_payload())
+        doc_id = first["document_id"]
+        second = repo.ingest_document(conn, client_token="t", client_doc_id="f1",
+                                      doc_class="przelew", canonical_json=przelew)
+
+        assert second["document_id"] == doc_id
+        assert second["created"] is True
+        assert repo.get_result(conn, "odwolanie", doc_id) is None
+        effective = repo.get_effective_result(conn, doc_id)
+        assert effective["doc_class"] == "przelew"
+        assert effective["canonical_json"] == przelew
+
+
+def test_save_result_rejects_class_mismatch(tmp_path):
+    """Zapis do magazynu innej klasy nie może utworzyć drugiego wyniku."""
+    init_db(tmp_path / "o2j.db")
+    with db(tmp_path / "o2j.db") as conn, pytest.raises(ValueError, match="mismatch"):
+        first = repo.ingest_document(conn, client_token="t", client_doc_id="f1",
+                                     doc_class="odwolanie",
+                                     canonical_json=_base_payload())
+        repo.save_result(conn, doc_class="przelew", document_id=first["document_id"],
+                         canonical_json={"x": 1})
+
+
+def test_ingest_after_corrections_keeps_earlier_fixes(tmp_path):
+    """Kolejny ingest jednego pola nie cofa poprawek z poprzednich sesji."""
+    init_db(tmp_path / "o2j.db")
+    original = _base_payload()
+    with db(tmp_path / "o2j.db") as conn:
+        first = repo.ingest_document(conn, client_token="t", client_doc_id="f1",
+                                     doc_class="odwolanie", canonical_json=original)
+        doc_id = first["document_id"]
+        repo.save_corrections(conn, document_id=doc_id,
+                              items=[{"field_path": "Odwolujacy[0].nazwa",
+                                      "corrected_value": "POPRAWIONA NAZWA"}])
+
+        reingested = dict(original)
+        reingested["Odwolujacy"] = [dict(original["Odwolujacy"][0], nip=BAD_NIP)]
+        repo.ingest_document(conn, client_token="t", client_doc_id="f1",
+                             doc_class="odwolanie", canonical_json=reingested)
+
+        effective = repo.get_effective_result(conn, doc_id)
+        assert effective["canonical_json"]["Odwolujacy"][0]["nazwa"] == "POPRAWIONA NAZWA"
+        assert effective["canonical_json"]["Odwolujacy"][0]["nip"] == BAD_NIP
+
+
+def test_concurrent_correction_sessions_stack(tmp_path):
+    """Równoległe poprawki różnych pól nie zgubią się przez wyścig odczytu."""
+    path = tmp_path / "o2j.db"
+    init_db(path)
+    with db(path) as conn:
+        first = repo.ingest_document(conn, client_token="t", client_doc_id="f1",
+                                     doc_class="odwolanie",
+                                     canonical_json=_base_payload())
+    doc_id = first["document_id"]
+    fixes = [
+        ("Odwolujacy[0].nazwa", "NAZWA Z WATKU 1"),
+        ("Odwolujacy[0].nip", BAD_NIP),
+        ("Zamawiajacy[0].nazwa", "ZAMAWIAJACY Z WATKU 3"),
+    ]
+
+    def apply(fix):
+        field_path, value = fix
+        with db(path) as conn:
+            return repo.save_corrections(
+                conn, document_id=doc_id,
+                items=[{"field_path": field_path, "corrected_value": value}],
+            )
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        sessions = list(pool.map(apply, fixes))
+
+    assert len(set(sessions)) == 3
+    with connect(path) as conn:
+        effective = repo.get_effective_result(conn, doc_id)
+    actual = effective["canonical_json"]
+    assert effective["correction_count"] == 3
+    assert actual["Odwolujacy"][0]["nazwa"] == "NAZWA Z WATKU 1"
+    assert actual["Odwolujacy"][0]["nip"] == BAD_NIP
+    assert actual["Zamawiajacy"][0]["nazwa"] == "ZAMAWIAJACY Z WATKU 3"

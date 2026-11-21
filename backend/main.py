@@ -60,7 +60,7 @@ def _strict_validation() -> bool:
 # Opcjonalny pipeline OCR/LLM — używa go tylko /api/analyze
 # ---------------------------------------------------------------------------
 
-OCR_BACKEND = os.environ.get("WEB_OCR_BACKEND", "cuda")
+OCR_BACKEND = os.environ.get("WEB_OCR_BACKEND", "text")
 
 # "text" reads the PDF's own text layer (pdfplumber) instead of rendering pages
 # for a vision model: no GPU, no model weights. Correct for every document in
@@ -115,8 +115,20 @@ async def _run_extraction(data: bytes, filename: str | None) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Autoryzacja (opcjonalna — włącza się przez API_TOKEN)
+# Autoryzacja (wymagana — wyjątek tylko dla jawnie oznaczonego devu)
 # ---------------------------------------------------------------------------
+
+
+def _ensure_auth_config() -> None:
+    """Fail fast: no API token means auth is off, which must be an explicit choice."""
+    if os.environ.get("API_TOKEN"):
+        return
+    if os.environ.get("O2J_DEV_NO_AUTH") == "1":
+        return
+    raise RuntimeError(
+        "API_TOKEN must be set at startup. For local development only, set "
+        "O2J_DEV_NO_AUTH=1 to run without auth (never in production)."
+    )
 
 
 def require_token(
@@ -176,6 +188,7 @@ class CorrectionsRequest(BaseModel):
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    _ensure_auth_config()
     if os.environ.get("OCR_LLM_PROCESSOR"):
         from ocr_api.llm_processor import validate_model
 
@@ -232,6 +245,32 @@ def ingest(payload: IngestRequest) -> dict[str, Any]:
     return result
 
 
+# Upload caps live here so a bad body never reaches the OCR/LLM pipeline.
+MAX_UPLOAD_BYTES = int(os.environ.get("O2J_MAX_UPLOAD_MB", "25")) * 1024 * 1024
+_READ_CHUNK = 1024 * 1024
+
+
+async def _read_pdf_upload(file: UploadFile) -> bytes:
+    """Read at most the cap, then check the PDF magic bytes."""
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(_READ_CHUNK)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large (limit {MAX_UPLOAD_BYTES // (1024 * 1024)} MB)",
+            )
+        chunks.append(chunk)
+    data = b"".join(chunks)
+    if not data.startswith(b"%PDF"):
+        raise HTTPException(status_code=415, detail="Only PDF files are accepted")
+    return data
+
+
 @app.post("/api/analyze", dependencies=[Depends(require_token)])
 async def analyze(
     file: UploadFile = File(...),
@@ -240,7 +279,7 @@ async def analyze(
     client_doc_id: str | None = Form(None),
 ) -> dict[str, Any]:
     """Odczyt tekstu z PDF (warstwa tekstowa albo OCR), opcjonalny LLM i zapis w SQLite."""
-    data = await file.read()
+    data = await _read_pdf_upload(file)
     result = await _run_extraction(data, file.filename)
     text_p1_3 = "\n\n".join(page["text"] for page in result["pages"])
     llm = result.get("llm")

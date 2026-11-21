@@ -17,7 +17,7 @@ import typer
 from lab import paths
 from lab.arena import rank_runs, render_arena_md, write_arena
 from lab.board import write_leaderboard
-from lab.cache import read_cached, write_cache
+from lab.cache import pdf_content_hash, read_cached, write_cache
 from lab.eval.errors import write_errors_md
 from lab.eval.metrics import EvalResult, evaluate_run, write_metrics
 from lab.llm.client import LLMClient
@@ -47,7 +47,9 @@ def split(
     ),
 ) -> None:
     """Split data into dev/holdout sets (stratified, seeded, by set)."""
-    resolved_data_root = data_root if data_root is not None else paths.data_root()
+    resolved_data_root = paths.validate_data_root(
+        data_root if data_root is not None else paths.data_root()
+    )
     result = build_split(resolved_data_root, n_holdout=holdout, seed=seed)
     out_path = write_split(result, paths.work_root())
     typer.echo(format_summary(result))
@@ -77,22 +79,30 @@ def ingest(
     if not all_:
         raise typer.BadParameter("--no-all is not supported yet; only --all (the default) is.")
 
-    resolved_data_root = data_root if data_root is not None else paths.data_root()
+    resolved_data_root = paths.validate_data_root(
+        data_root if data_root is not None else paths.data_root()
+    )
     resolved_work_root = work_root if work_root is not None else paths.work_root()
     cache_root = resolved_work_root / "cache"
 
     pdf_paths = sorted((resolved_data_root / "dane").glob("przyklad_*/*.pdf"))
+    if not pdf_paths:
+        raise typer.BadParameter(
+            f"no PDFs found under {resolved_data_root / 'dane'}/przyklad_*/*.pdf; "
+            "check O2J_DATA_ROOT / data_root in configs/paths.yaml"
+        )
 
     hits = 0
     misses = 0
     start = time.perf_counter()
     for pdf_path in pdf_paths:
-        cached = read_cached(cache_root, pdf_path, extractor)
+        digest = pdf_content_hash(pdf_path)
+        cached = read_cached(cache_root, pdf_path, extractor, content_hash=digest)
         if cached is not None:
             hits += 1
             continue
         pages = extract_pages(pdf_path, extractor)
-        write_cache(cache_root, pdf_path, extractor, pages)
+        write_cache(cache_root, pdf_path, extractor, pages, content_hash=digest)
         misses += 1
     elapsed = time.perf_counter() - start
 
@@ -106,16 +116,11 @@ def eval_(
         ...,
         "--run",
         help=(
-            "Path to the prediction run directory, mirroring "
+            "Path to an existing prediction run directory, mirroring "
             "<gold_dir>/przyklad_NN/<class>.json. metrics.json and "
-            "errors.md are written inside this directory. "
-            "SPECIAL CASE: if this path does not exist on disk, OR "
-            "--pred-equals-gold is passed, gold is evaluated against "
-            "itself (pred_dir := gold_dir) instead of erroring -- this is "
-            "how the Phase A identity gate is run without materializing "
-            "180 literal copies of gold as a fake run, e.g. "
-            "`--run work/runs/_identity` (a directory that is never "
-            "created as pred data, only as output)."
+            "errors.md are written inside this directory. A missing "
+            "directory is an error; use --pred-equals-gold explicitly "
+            "for the identity sanity check."
         ),
     ),
     data_root: Path | None = typer.Option(
@@ -139,16 +144,20 @@ def eval_(
     if split not in ("dev", "holdout", "all"):
         raise typer.BadParameter("--split must be one of: dev, holdout, all")
 
-    resolved_data_root = data_root if data_root is not None else paths.data_root()
+    resolved_data_root = paths.validate_data_root(
+        data_root if data_root is not None else paths.data_root()
+    )
     gold_dir = resolved_data_root / "dane"
 
-    identity_mode = pred_equals_gold or not run.exists()
+    if not pred_equals_gold and not run.exists():
+        raise typer.BadParameter(
+            f"prediction run directory not found: {run}. "
+            "Pass --pred-equals-gold to run the identity check explicitly."
+        )
+    identity_mode = pred_equals_gold
     pred_dir = gold_dir if identity_mode else run
     if identity_mode:
-        typer.echo(
-            f"[lab eval] evaluating gold against itself "
-            f"({'--pred-equals-gold set' if pred_equals_gold else f'--run {run} not found'})"
-        )
+        typer.echo("[lab eval] evaluating gold against itself (--pred-equals-gold set)")
 
     set_ids: list[str] | None = None
     if split != "all":
@@ -229,7 +238,9 @@ def _execute_run(
     server_timeout: float = START_TIMEOUT,
 ) -> _RunOutcome:
     experiment, model = _load_experiment_and_model(config, model_id, split, limit)
-    resolved_data_root = data_root if data_root is not None else paths.data_root()
+    resolved_data_root = paths.validate_data_root(
+        data_root if data_root is not None else paths.data_root()
+    )
     resolved_work_root = work_root if work_root is not None else paths.work_root()
     specs = load_all_classes(paths.configs_root() / "classes")
     prompts = PromptSet()
@@ -284,6 +295,7 @@ def _execute_run(
         prompts_sha256=prompts.sha256(),
         server=model.server_dict(),
         params=model.params,
+        experiment_config=experiment.manifest_dict(),
     )
     write_manifest(finish_manifest(manifest), pipeline_result.run_dir)
 
@@ -397,7 +409,9 @@ def predict_one(
     specs = load_all_classes(paths.configs_root() / "classes")
     if class_id not in specs:
         raise typer.BadParameter(f"unknown class {class_id!r}; available: {', '.join(sorted(specs))}")
-    resolved_data_root = data_root if data_root is not None else paths.data_root()
+    resolved_data_root = paths.validate_data_root(
+        data_root if data_root is not None else paths.data_root()
+    )
     resolved_work_root = work_root if work_root is not None else paths.work_root()
 
     run_dir = resolved_work_root / "runs" / f"_predict_{set_id}_{class_id}_{selected_model.id}"
@@ -556,7 +570,9 @@ def ocr_smoke(
     benchmark grid from AI/PLAN.md section 8A -- that is explicitly
     deferred; this is a small, fast sanity check only.
     """
-    resolved_data_root = data_root if data_root is not None else paths.data_root()
+    resolved_data_root = paths.validate_data_root(
+        data_root if data_root is not None else paths.data_root()
+    )
     resolved_work_root = work_root if work_root is not None else paths.work_root()
 
     result = run_smoke_benchmark(

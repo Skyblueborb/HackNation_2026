@@ -194,11 +194,85 @@ def test_unknown_class_produces_zero_byte_output_without_extraction(tmp_path: Pa
 
     assert len(result.outcomes) == 1
     assert result.outcomes[0].classification is None
-    assert result.llm_calls == 0
+    # Classification is an LLM call now; it must be counted even when no
+    # extraction follows.
+    assert result.llm_calls == 1
     assert len(seen) == 1
     rejected = result.run_dir / "przyklad_obcy" / "faktura.json"
     assert rejected.exists()
     assert rejected.stat().st_size == 0
+    usage = json.loads((result.run_dir / "usage.json").read_text(encoding="utf-8"))
+    assert usage[0]["calls"] == 1
+    assert usage[0]["prompt_tokens"] == 500
+
+
+def test_rejected_transfer_uses_gold_stem_for_output_and_classification(tmp_path: Path):
+    pages = [{"n": 1, "text": "transfer", "width": 100, "height": 100}]
+    # The PDF name passes the class_ids stem filter, but the LLM resolves the
+    # document as a transfer -- a class the caller did not ask for.
+    data_root, work_root, _pdf = _fake_pdf_with_cached_text(
+        tmp_path, "przyklad_obcy", "odwolanie", pages
+    )
+
+    def transport(**kwargs):
+        user = kwargs["messages"][1]["content"]
+        if "Skategoryzuj" in user:
+            return _response("potwierdzenie_przelewu")
+        raise AssertionError("rejected document must not reach an extractor")
+
+    result = run_pipeline(
+        experiment=replace(EXPERIMENT, classify_method="llm"),
+        model=MODEL,
+        specs=SPECS,
+        data_root=data_root,
+        work_root=work_root,
+        run_dir=tmp_path / "run",
+        set_ids=["przyklad_obcy"],
+        class_ids=["odwolanie"],
+        client=LLMClient(MODEL, transport=transport),
+        prompts=PromptSet(),
+    )
+
+    expected = result.run_dir / "przyklad_obcy" / "przelew.json"
+    assert expected.exists()
+    assert expected.stat().st_size == 0
+    classifications = json.loads((result.run_dir / "classification.json").read_text(encoding="utf-8"))
+    assert classifications == {"przyklad_obcy/przelew.json": "potwierdzenie_przelewu"}
+
+
+def test_classification_llm_response_is_counted_in_usage(tmp_path: Path):
+    pages = [{"n": 1, "text": "dokument", "width": 100, "height": 100}]
+    data_root, work_root, _pdf = _fake_pdf_with_cached_text(
+        tmp_path, "przyklad_obcy", "skan_2026", pages
+    )
+
+    def transport(**kwargs):
+        user = kwargs["messages"][1]["content"]
+        if "Skategoryzuj" in user:
+            return _response("odwolanie")
+        # Extraction may fail validation; its tokens still belong in usage.
+        return _response("{}")
+
+    result = run_pipeline(
+        experiment=replace(EXPERIMENT, classify_method="llm", retry_on_invalid=0),
+        model=MODEL,
+        specs=SPECS,
+        data_root=data_root,
+        work_root=work_root,
+        run_dir=tmp_path / "run",
+        set_ids=["przyklad_obcy"],
+        client=LLMClient(MODEL, transport=transport),
+        prompts=PromptSet(),
+    )
+
+    assert not result.outcomes[0].ok
+    assert result.llm_calls == 2
+    assert result.prompt_tokens == 1000
+    assert result.completion_tokens == 240
+    usage = json.loads((result.run_dir / "usage.json").read_text(encoding="utf-8"))
+    assert usage[0]["calls"] == 2
+    assert usage[0]["prompt_tokens"] == 1000
+    assert usage[0]["structured_calls"] == 1
 
 
 def test_polish_labels_are_mapped_for_models_without_structured_output(tmp_path: Path):

@@ -26,7 +26,8 @@ share imports or dependencies.
 - L4 has 24 GB VRAM; BF16 fits. Optional int8 via bitsandbytes is a follow-up,
   not part of this change.
 - Uvicorn `--workers 1`; one `asyncio.Lock` around inference.
-- Page render: 400 DPI, longest edge 2048 px. Empty prompt, thinking off.
+- Page render: 400 DPI, longest edge 2048 px. The shipped default prompt is
+  `grounding` (`OCR_PROMPT`); set `OCR_PROMPT=""` for plain transcription.
 
 ## Approaches
 

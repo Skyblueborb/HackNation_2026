@@ -29,14 +29,32 @@ def configs_root() -> Path:
     return REPO_ROOT / "configs"
 
 
-def data_root() -> Path:
+def validate_data_root(path: Path) -> Path:
+    """Fail fast with an actionable message when the data root is missing.
+
+    Commands that would otherwise scan zero documents call this before doing
+    any work; pure path resolution (`data_root()`) stays non-raising so tests
+    can import modules without the dataset installed.
+    """
+    path = Path(path)
+    if not path.is_dir():
+        raise FileNotFoundError(
+            f"data root not found: {path}. Set O2J_DATA_ROOT to the directory "
+            "containing dane/przyklad_* (or fix 'data_root' in configs/paths.yaml)."
+        )
+    return path
+
+
+def data_root(*, must_exist: bool = False) -> Path:
     override = os.environ.get("O2J_DATA_ROOT")
     if override:
-        return Path(override).expanduser().resolve()
-    value = _config().get("data_root")
-    if value is None:
-        raise RuntimeError("data_root is not set in configs/paths.yaml or O2J_DATA_ROOT")
-    return Path(value).expanduser().resolve()
+        path = Path(override).expanduser().resolve()
+    else:
+        value = _config().get("data_root")
+        if value is None:
+            raise RuntimeError("data_root is not set in configs/paths.yaml or O2J_DATA_ROOT")
+        path = Path(value).expanduser().resolve()
+    return validate_data_root(path) if must_exist else path
 
 
 def work_root() -> Path:

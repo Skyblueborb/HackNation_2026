@@ -82,3 +82,13 @@ def test_local_api_returns_pages(monkeypatch):
     )
     assert r.status_code == 200
     assert r.json() == {"backend": "mlx", "pages": [{"page": 1, "text": "hello"}]}
+
+
+def test_local_analyze_rejects_oversized_pdf(monkeypatch):
+    monkeypatch.setattr(app_module, "MAX_UPLOAD_BYTES", 16)
+    r = TestClient(app_module.app).post(
+        "/analyze",
+        headers={"X-API-Key": "test-key"},
+        files={"file": ("a.pdf", b"x" * 32, "application/pdf")},
+    )
+    assert r.status_code == 413

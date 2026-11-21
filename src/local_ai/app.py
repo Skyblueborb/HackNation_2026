@@ -7,7 +7,7 @@ import contextlib
 import os
 import time
 
-from fastapi import Depends, FastAPI, File, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from PIL import Image
 
 from ocr_common import (
@@ -33,6 +33,8 @@ MAX_TOKENS = int(os.environ.get("OCR_MAX_TOKENS", "2048"))
 PROMPT = os.environ.get("OCR_PROMPT", "grounding")
 PRELOAD = os.environ.get("OCR_PRELOAD", "1") == "1"
 MLX_MODEL = os.environ.get("MLX_MODEL", "models/LightOnOCR-3-4B-mlx-8bit")
+MAX_UPLOAD_BYTES = int(os.environ.get("OCR_MAX_UPLOAD_BYTES", str(50 * 1024 * 1024)))
+# Resolving this returns a proxy; the real processor is built in lifespan.
 PROCESSOR = load_llm_processor(os.environ.get("OCR_LLM_PROCESSOR"))
 configure_logging(verbose=os.environ.get("OCR_VERBOSE", "0") == "1")
 
@@ -46,6 +48,10 @@ _session = None
 @contextlib.asynccontextmanager
 async def lifespan(_app: FastAPI):
     validate_startup()
+    if os.environ.get("OCR_LLM_PROCESSOR"):
+        from ocr_api.llm_processor import get_processor
+
+        get_processor()
     logger.info(
         "starting: backend=mlx model=%s preload=%s llm=%s",
         MLX_MODEL,
@@ -114,7 +120,12 @@ def health() -> dict:
 
 @app.post("/analyze", dependencies=[Depends(verify_key)])
 async def analyze(file: UploadFile = File(...)) -> dict:
-    data = await file.read()
+    data = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"PDF exceeds the {MAX_UPLOAD_BYTES}-byte upload limit",
+        )
     return await run_ocr_async(
         data,
         get_backend(),

@@ -3,6 +3,7 @@ models/
 *.gguf
 input/
 output/
+out/
 .venv/
 __pycache__/
 *.pyc

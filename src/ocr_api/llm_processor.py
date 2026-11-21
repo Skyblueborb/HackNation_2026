@@ -6,11 +6,14 @@ pipeline to the `LLMProcessor` contract in `ocr_common.ports`.
 The processor is built lazily: importing this module never loads configs or
 validates `OCR_LLM_MODEL`. Config validation happens at app startup through
 `validate_model()`; inference setup happens on first use through `get_processor()`.
+The registry target `ocr_api.llm_processor:processor` is a deferred proxy so
+resolving it at app import does not build the processor.
 """
 
 from __future__ import annotations
 
 import os
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +29,24 @@ from ocr_common.ports import OCRDocument
 
 DEFAULT_MODEL = "qwen3-8b"
 MODELS_PATH = REPO_ROOT / "configs" / "models.yaml"
+
+# Grounding replaces model fields with spans copied from the OCR text. It is off
+# by default to keep the model's own output and match the baseline experiment.
+# Set OCR_LLM_GROUND_NULL=1 to enable it deliberately.
+GROUND_NULL = os.environ.get("OCR_LLM_GROUND_NULL", "0") == "1"
+
+# A neutral stem matches none of classify_by_rules' filename stems, so routing
+# is decided by text keywords. The filename is used only to break text ties.
+_NEUTRAL_PATH = Path("document.pdf")
+_FILENAME_RULES = (
+    ("odwol", "odwolanie"),
+    ("odwoł", "odwolanie"),
+    ("pelnom", "pelnomocnictwo"),
+    ("pełnom", "pelnomocnictwo"),
+    ("przelew", "potwierdzenie_przelewu"),
+    ("platn", "potwierdzenie_przelewu"),
+    ("trans", "potwierdzenie_przelewu"),
+)
 
 
 def _resolve_model_id(model_id: str | None) -> str:
@@ -53,6 +74,17 @@ def validate_model(model_id: str | None = None) -> None:
         raise ValueError(_unknown_model_message(resolved, models))
 
 
+def classify_document(text: str, filename: str | None) -> str:
+    """Route by text; fall back to the filename only when text is ambiguous."""
+    class_id = classify_by_rules(_NEUTRAL_PATH, text)
+    if class_id is None and filename:
+        stem = Path(filename).stem.lower()
+        for needle, candidate in _FILENAME_RULES:
+            if needle in stem:
+                return candidate
+    return class_id or "odwolanie"
+
+
 class LabLLMProcessor:
     def __init__(self, model_id: str | None = None) -> None:
         self.model_id = _resolve_model_id(model_id)
@@ -67,8 +99,7 @@ class LabLLMProcessor:
 
     def process(self, document: OCRDocument) -> dict[str, Any]:
         text = "\n\n".join(page.text for page in document.pages)
-        path = Path(document.filename or "document.pdf")
-        class_id = classify_by_rules(path, text) or "odwolanie"
+        class_id = classify_document(text, document.filename)
         if class_id not in self.specs:
             return {
                 "class": class_id,
@@ -82,7 +113,7 @@ class LabLLMProcessor:
             self.specs[class_id],
             text,
             retries=1,
-            ground_null=False,
+            ground_null=GROUND_NULL,
         )
         return {
             "class": class_id,
@@ -93,18 +124,31 @@ class LabLLMProcessor:
 
 
 _processor: LabLLMProcessor | None = None
+_processor_lock = threading.Lock()
 
 
 def get_processor() -> LabLLMProcessor:
-    """Return the shared processor, building it on first access."""
+    """Return the shared processor, building it once on first access."""
     global _processor
     if _processor is None:
-        _processor = LabLLMProcessor()
+        with _processor_lock:
+            if _processor is None:
+                _processor = LabLLMProcessor()
     return _processor
+
+
+class _ProcessorProxy:
+    """Defer construction until a call or an explicit get_processor() at startup."""
+
+    def process(self, document: OCRDocument) -> Any:
+        return get_processor().process(document)
+
+
+_processor_proxy = _ProcessorProxy()
 
 
 def __getattr__(name: str) -> Any:
     # Registry target: OCR_LLM_PROCESSOR=ocr_api.llm_processor:processor
     if name == "processor":
-        return get_processor()
+        return _processor_proxy
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

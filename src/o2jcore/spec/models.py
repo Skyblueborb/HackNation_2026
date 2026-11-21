@@ -14,6 +14,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
+def split_segment(segment: str) -> tuple[str, bool]:
+    """Split one dotted-path segment into (key, is_list) — the single parser
+    for the trailing '[]' marker used by every spec consumer."""
+    if segment.endswith("[]"):
+        return segment[:-2], True
+    return segment, False
+
+
 @dataclass
 class ListSpec:
     """Cardinality + alignment hint for a field that holds a list of objects."""
@@ -60,16 +68,6 @@ class FieldSpec:
     @property
     def segments(self) -> list[str]:
         return self.path.split(".")
-
-    @property
-    def key(self) -> str:
-        """The final path segment, with any trailing [] stripped."""
-        last = self.segments[-1]
-        return last[:-2] if last.endswith("[]") else last
-
-    @property
-    def is_list(self) -> bool:
-        return self.segments[-1].endswith("[]")
 
 
 @dataclass

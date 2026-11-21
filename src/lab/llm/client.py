@@ -120,22 +120,24 @@ class LLMClient:
         try:
             response = self._create(**kwargs)
         except Exception as exc:
-            if schema is None:
-                raise
             original = exc
             response = None
+            # Transient failures are retried for every call. What only the
+            # structured path can do is drop response_format and try again.
             if _is_transient_error(exc):
                 try:
                     response = self._create(**kwargs)
                 except Exception as retry_exc:
                     original = retry_exc
-            if response is None:
+            if response is None and schema is not None:
                 kwargs.pop("response_format", None)
                 try:
                     response = self._create(**kwargs)
                 except Exception:
                     raise original
                 structured = False
+            if response is None:
+                raise original
         elapsed = time.perf_counter() - started
 
         message = _attr_or_key(response, "choices", "choices", [])[0]

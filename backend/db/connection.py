@@ -28,7 +28,7 @@ def connect(db_path: str | Path | None = None) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
-    conn.execute("PRAGMA busy_timeout = 5000")
+    conn.execute("PRAGMA busy_timeout = 30000")
     return conn
 
 
@@ -90,9 +90,13 @@ def init_db(db_path: str | Path | None = None) -> Path:
         conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
 
         conn.execute("DROP INDEX IF EXISTS idx_source_documents_token_class")
+        conn.execute("DROP INDEX IF EXISTS idx_source_documents_client_doc")
+        # client_doc_id is only unique inside one client_token. Keying on the
+        # id alone lets two clients (or two classes) silently merge documents.
         conn.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_source_documents_client_doc "
-            "ON source_documents(client_doc_id) WHERE client_doc_id IS NOT NULL"
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_source_documents_client_key "
+            "ON source_documents(client_token, client_doc_id) "
+            "WHERE client_token IS NOT NULL AND client_doc_id IS NOT NULL"
         )
         conn.commit()
     finally:

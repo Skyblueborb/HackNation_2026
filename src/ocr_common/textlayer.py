@@ -59,32 +59,17 @@ async def run_textlayer_async(
     """Text-layer counterpart of `pipeline.run_ocr_async`.
 
     Returns the same response shape: `backend`, `pages`, and `llm` when a
-    processor is configured. No inference lock is taken for the extraction
-    itself -- it is CPU-cheap and holds no model -- but the LLM processor, if
-    any, runs inside the same worker thread so one request does not interleave
-    model calls with another.
+    processor is configured. Extraction is CPU-cheap and holds no model, so it
+    needs no inference lock. Only the LLM processor is serialized, via the
+    shared llm_semaphore, so model calls never interleave.
     """
-    from ocr_common.common import logger
+    from ocr_common.common import llm_semaphore, logger
 
     started = time.perf_counter()
     logger.info("analyze start: backend=%s model=%s (text layer)", backend, model)
-    result = await asyncio.to_thread(
-        _run, data, backend, model, processor, filename, started
+    document = await asyncio.to_thread(
+        extract_document, data, backend=backend, model=model, filename=filename
     )
-    return result
-
-
-def _run(
-    data: bytes,
-    backend: str,
-    model: str,
-    processor: LLMProcessor | None,
-    filename: str | None,
-    started: float,
-) -> dict:
-    from ocr_common.common import logger
-
-    document = extract_document(data, backend=backend, model=model, filename=filename)
     for page in document.pages:
         logger.info("page %d: %d chars", page.number, len(page.text))
         if not page.text:
@@ -92,7 +77,8 @@ def _run(
 
     response = document.as_dict()
     if processor is not None:
-        response["llm"] = processor.process(document)
+        async with llm_semaphore:
+            response["llm"] = await asyncio.to_thread(processor.process, document)
     logger.info(
         "analyze done: pages=%d total=%.2fs",
         len(document.pages),

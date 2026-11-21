@@ -45,8 +45,10 @@ CREATE INDEX IF NOT EXISTS idx_source_documents_class
     ON source_documents(doc_class);
 CREATE INDEX IF NOT EXISTS idx_source_documents_job
     ON source_documents(job_id);
--- Uwaga: indeks po client_doc_id jest zakładany w connection.init_db()
--- PO migracji dodającej tę kolumnę do starszych baz.
+-- Uwaga: unikalny indeks po (client_token, client_doc_id) jest zakładany
+-- w connection.init_db() PO migracji dodającej kolumny do starszych baz.
+-- Sam client_doc_id NIE jest unikalny — dwóch klientów może użyć tego samego
+-- identyfikatora pliku.
 
 -- MAGAZYN 1: odwołanie -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS json_odwolanie (

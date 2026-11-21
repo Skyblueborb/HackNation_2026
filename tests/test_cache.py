@@ -6,7 +6,7 @@ from pathlib import Path
 
 from lab import paths
 from lab.cache import pdf_content_hash, read_cached, write_cache
-from o2jcore.text.pdf_text import extract_pages
+from o2jcore.text.pdf_text import PageText, extract_pages
 
 DANE = paths.data_root() / "dane"
 
@@ -80,3 +80,24 @@ def test_ingest_subset_reports_hits_then_misses(tmp_path: Path) -> None:
 
     hits_2, misses_2 = run_pass()
     assert (hits_2, misses_2) == (len(pdf_paths), 0)
+
+
+def test_read_write_with_precomputed_hash_do_not_rehash(tmp_path: Path, monkeypatch) -> None:
+    pdf_path = tmp_path / "fake.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 fake")
+    digest = pdf_content_hash(pdf_path)
+    calls: list[Path] = []
+
+    def counting_hash(path):
+        calls.append(Path(path))
+        return pdf_content_hash(path)
+
+    monkeypatch.setattr("lab.cache.pdf_content_hash", counting_hash)
+
+    cache_root = tmp_path / "cache"
+    pages = [PageText(n=1, text="hello", width=100, height=100)]
+    assert read_cached(cache_root, pdf_path, "pdfium", content_hash=digest) is None
+    write_cache(cache_root, pdf_path, "pdfium", pages, content_hash=digest)
+    assert read_cached(cache_root, pdf_path, "pdfium", content_hash=digest) is not None
+
+    assert calls == []

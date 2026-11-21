@@ -45,9 +45,10 @@ class OCRPage:
 
 @dataclass(frozen=True)
 class OCRDocument:
-    backend: str         # "cuda" or "mlx"
-    model: str           # active OCR model id
+    backend: str              # "cuda" or "mlx"
+    model: str                # active OCR model id
     pages: tuple[OCRPage, ...]
+    filename: str | None = None
 ```
 
 The return value must be JSON-serializable. It is added verbatim as `response["llm"]`.

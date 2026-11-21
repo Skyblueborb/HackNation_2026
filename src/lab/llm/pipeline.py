@@ -17,7 +17,7 @@ from o2jcore.spec.models import DocClassSpec
 from o2jcore.spec.pydantic_build import build_model
 from o2jcore.text.pdf_text import extract_pages
 
-from lab.cache import read_cached, write_cache
+from lab.cache import pdf_content_hash, read_cached, write_cache
 from lab.llm.classify import classify_document
 from lab.llm.client import LLMClient, LLMResponse, unwrap_json
 from lab.llm.config import ExperimentConfig, ModelConfig
@@ -46,10 +46,17 @@ class DocumentOutcome:
     text: str
     classification: str | None
     extraction: Extraction
+    classification_response: LLMResponse | None = None
 
     @property
     def ok(self) -> bool:
         return self.extraction.obj is not None
+
+    @property
+    def all_responses(self) -> list[LLMResponse]:
+        """Classification and extraction calls, for honest usage accounting."""
+        cls = [self.classification_response] if self.classification_response is not None else []
+        return cls + self.extraction.responses
 
 
 @dataclass
@@ -59,15 +66,15 @@ class PipelineResult:
 
     @property
     def prompt_tokens(self) -> int:
-        return sum(r.prompt_tokens for o in self.outcomes for r in o.extraction.responses)
+        return sum(r.prompt_tokens for o in self.outcomes for r in o.all_responses)
 
     @property
     def completion_tokens(self) -> int:
-        return sum(r.completion_tokens for o in self.outcomes for r in o.extraction.responses)
+        return sum(r.completion_tokens for o in self.outcomes for r in o.all_responses)
 
     @property
     def seconds(self) -> float:
-        return sum(r.seconds for o in self.outcomes for r in o.extraction.responses)
+        return sum(r.seconds for o in self.outcomes for r in o.all_responses)
 
     @property
     def retries(self) -> int:
@@ -79,19 +86,20 @@ class PipelineResult:
 
     @property
     def structured_calls(self) -> int:
-        return sum(1 for o in self.outcomes for r in o.extraction.responses if r.structured)
+        return sum(1 for o in self.outcomes for r in o.all_responses if r.structured)
 
     @property
     def llm_calls(self) -> int:
-        return sum(len(o.extraction.responses) for o in self.outcomes)
+        return sum(len(o.all_responses) for o in self.outcomes)
 
 
 def _load_pages(pdf_path: Path, cache_root: Path, extractor: str) -> list[Any]:
-    cached = read_cached(cache_root, pdf_path, extractor)
+    digest = pdf_content_hash(pdf_path)
+    cached = read_cached(cache_root, pdf_path, extractor, content_hash=digest)
     if cached is not None:
         return cached["pages"]
     pages = extract_pages(pdf_path, extractor)
-    write_cache(cache_root, pdf_path, extractor, pages)
+    write_cache(cache_root, pdf_path, extractor, pages, content_hash=digest)
     return [
         {"n": page.n, "text": page.text, "width": page.width, "height": page.height}
         for page in pages
@@ -303,6 +311,16 @@ def extract_document(
     return result
 
 
+def _usage_fields(responses: list[LLMResponse]) -> dict[str, Any]:
+    return {
+        "prompt_tokens": sum(r.prompt_tokens for r in responses),
+        "completion_tokens": sum(r.completion_tokens for r in responses),
+        "seconds": round(sum(r.seconds for r in responses), 4),
+        "calls": len(responses),
+        "structured_calls": sum(1 for r in responses if r.structured),
+    }
+
+
 def _write_raw(run_dir: Path, set_id: str, stem: str, extraction: Extraction) -> None:
     raw_dir = run_dir / "raw" / set_id
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -358,32 +376,35 @@ def run_pipeline(
                 head_chars=experiment.head_chars,
                 tail_chars=experiment.tail_chars,
             )
+            classification: str | None = None
+            cls_response: LLMResponse | None = None
             try:
-                classification, _ = classify_document(
+                classification, cls_response = classify_document(
                     active_client, resolved_prompts, pdf_path, text, experiment.classify_method
                 )
             except Exception:
-                classification = None
+                pass
 
             if classification not in specs or (
                 class_ids is not None and classification not in class_ids
             ):
-                rel_path = f"{set_id}/{pdf_path.stem}.json"
+                # A rejected document still belongs to its resolved class's
+                # gold stem (e.g. przelew.json for a transfer), not to the
+                # PDF's on-disk name. Unknown classes keep the PDF stem.
+                stem = specs[classification].gold_stem if classification in specs else pdf_path.stem
+                rel_path = f"{set_id}/{stem}.json"
                 classifications[rel_path] = classification
                 pred_path = resolved_run_dir / rel_path
                 pred_path.parent.mkdir(parents=True, exist_ok=True)
                 pred_path.write_bytes(b"")
+                cls_usage = _usage_fields([cls_response] if cls_response is not None else [])
                 usages.append(
                     {
                         "file": rel_path,
                         "class": classification,
                         "classification": classification,
-                        "prompt_tokens": 0,
-                        "completion_tokens": 0,
-                        "seconds": 0.0,
-                        "calls": 0,
+                        **cls_usage,
                         "retries": 0,
-                        "structured_calls": 0,
                         "grounded": 0,
                         "derived": 0,
                         "error": "rejected: class not recognized",
@@ -397,6 +418,7 @@ def run_pipeline(
                         text,
                         classification,
                         Extraction(obj=None, error="rejected: class not recognized"),
+                        classification_response=cls_response,
                     )
                 )
                 continue
@@ -424,24 +446,31 @@ def run_pipeline(
                     json.dump(extraction.obj, f, indent=2, ensure_ascii=False)
                     f.write("\n")
 
+            all_responses = (
+                ([cls_response] if cls_response is not None else []) + extraction.responses
+            )
             usages.append(
                 {
                     "file": rel_path,
                     "class": classification,
                     "classification": classification,
-                    "prompt_tokens": sum(r.prompt_tokens for r in extraction.responses),
-                    "completion_tokens": sum(r.completion_tokens for r in extraction.responses),
-                    "seconds": round(sum(r.seconds for r in extraction.responses), 4),
-                    "calls": len(extraction.responses),
+                    **_usage_fields(all_responses),
                     "retries": extraction.retries,
-                    "structured_calls": sum(1 for r in extraction.responses if r.structured),
                     "grounded": extraction.grounded,
                     "derived": extraction.derived,
                     "error": extraction.error,
                 }
             )
             result.outcomes.append(
-                DocumentOutcome(set_id, classification, pdf_path, text, classification, extraction)
+                DocumentOutcome(
+                    set_id,
+                    classification,
+                    pdf_path,
+                    text,
+                    classification,
+                    extraction,
+                    classification_response=cls_response,
+                )
             )
 
     with (resolved_run_dir / "classification.json").open("w", encoding="utf-8") as f:

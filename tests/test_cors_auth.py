@@ -18,6 +18,7 @@ def _restore_main(monkeypatch):
     yield
     monkeypatch.delenv("CORS_ORIGINS", raising=False)
     monkeypatch.delenv("API_TOKEN", raising=False)
+    monkeypatch.delenv("O2J_DEV_NO_AUTH", raising=False)
     importlib.reload(main)
 
 
@@ -77,3 +78,20 @@ def test_x_api_token_correct_and_incorrect(monkeypatch):
     assert client.get("/ping", headers={"X-API-Token": "s3cr3t"}).status_code == 200
     assert client.get("/ping", headers={"X-API-Token": "wrong"}).status_code == 401
     assert client.get("/ping").status_code == 401
+
+
+def test_startup_requires_api_token(monkeypatch):
+    monkeypatch.delenv("API_TOKEN", raising=False)
+    monkeypatch.delenv("O2J_DEV_NO_AUTH", raising=False)
+    with pytest.raises(RuntimeError, match="API_TOKEN"):
+        with TestClient(main.app):
+            pass
+
+
+def test_dev_no_auth_flag_allows_startup(tmp_path, monkeypatch):
+    monkeypatch.setenv("O2J_DB_PATH", str(tmp_path / "dev.db"))
+    monkeypatch.delenv("API_TOKEN", raising=False)
+    monkeypatch.setenv("O2J_DEV_NO_AUTH", "1")
+    with TestClient(main.app) as client:
+        assert client.get("/api/health").json()["status"] == "ok"
+        assert client.get("/api/documents").status_code == 200

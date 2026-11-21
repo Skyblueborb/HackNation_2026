@@ -8,6 +8,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
+from lab.llm.config import ExperimentConfig
 from lab.manifest import finish_manifest, new_manifest, run_dir_name, write_manifest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -117,3 +118,22 @@ def test_finish_manifest_sets_finished_after_started(tmp_path: Path) -> None:
     started_dt = datetime.fromisoformat(finished_m.started)
     finished_dt = datetime.fromisoformat(finished_m.finished)
     assert finished_dt >= started_dt
+
+
+def test_manifest_carries_experiment_config_with_cli_overrides(tmp_path: Path) -> None:
+    experiment = ExperimentConfig(name="E1", split="holdout", limit=5, head_chars=123)
+
+    m = new_manifest(
+        experiment=experiment.name,
+        split=experiment.split,
+        data_root=tmp_path,
+        work_root=tmp_path,
+        experiment_config=experiment.manifest_dict(),
+    )
+    out_path = write_manifest(m, tmp_path / "run")
+
+    data = json.loads(out_path.read_text(encoding="utf-8"))
+    assert data["experiment_config"]["name"] == "E1"
+    assert data["experiment_config"]["split"] == "holdout"
+    assert data["experiment_config"]["limit"] == 5
+    assert data["experiment_config"]["head_chars"] == 123

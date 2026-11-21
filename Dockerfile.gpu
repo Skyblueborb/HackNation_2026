@@ -5,13 +5,17 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends python3 python3-pip python3-venv ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install --no-cache-dir uv
+# pyproject.toml requires >=3.13,<3.14; Ubuntu 24.04 ships 3.12.
+# Let uv fetch the matching interpreter instead of using the system one.
+RUN pip3 install --no-cache-dir uv \
+    && uv python install 3.13
 
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 
 ENV UV_PROJECT_ENVIRONMENT=/app/.venv
+ENV UV_PYTHON=3.13
 RUN uv sync --frozen --extra gpu --extra serve
 ENV PATH=/app/.venv/bin:$PATH
 

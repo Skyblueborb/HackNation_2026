@@ -29,5 +29,6 @@
 | uvicorn | latest | BSD-3 | ASGI server dla API | 2026-11-21 |
 | python-multipart | latest | Apache-2.0 | Upload plików PDF przez API | 2026-11-21 |
 | LightOnOCR-3-4B | latest | Apache-2.0 | Model bazowy OCR | 2026-11-21 |
-| BaranH/LightOnOCR-3-4B-mlx-8Bit | latest | Apache-2.0 | 8-bitowy model MLX używany w demo | 2026-11-21 |
+| prithivMLmods/LightOnOCR-3-4B-MLX (`8bit/`) | latest | Apache-2.0 | 8-bitowy MLX OCR, dokładny (`scripts/make-mlx-model.sh`) | 2026-11-21 |
+| fwgpiyawudk/LightOnOCR-3-0.8B-MLX-8bit | latest | Apache-2.0 | 8-bitowy MLX OCR, szybki (domyślny CLI) | 2026-11-21 |
 | mlx-vlm | latest | MIT | Backend demo OCR na Apple Silicon | 2026-11-21 |

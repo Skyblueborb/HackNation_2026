@@ -8,12 +8,14 @@ from fastapi import Header, HTTPException
 from PIL import Image
 
 logger = logging.getLogger("ocr")
+
+# One OCR model per process: serialize rendering/generation.
 inference_lock = asyncio.Lock()
+# One LLM server: bound concurrent LLM calls without blocking OCR. Default 1
+# also serializes the LLM client's lazy init; raise with OCR_LLM_CONCURRENCY.
+llm_semaphore = asyncio.Semaphore(int(os.environ.get("OCR_LLM_CONCURRENCY", "1")))
 
 MAX_EDGE = int(os.environ.get("OCR_MAX_EDGE", "2048"))
-
-# Kept for backwards compatibility. Resolve the live value in get_api_key().
-API_KEY = os.environ.get("API_KEY")
 
 
 def get_api_key() -> str:
@@ -39,14 +41,21 @@ def configure_logging(verbose: bool = False) -> None:
 def render_pages(
     data: bytes, dpi: int = 400, max_edge: int | None = None
 ) -> list[Image.Image]:
-    """Render PDF pages at model size. No text layer is read."""
+    """Render PDF pages at a scale bounded by max_edge. No text layer is read.
+
+    Rendering at a scale derived from max_edge avoids allocating full 400-DPI
+    buffers for large pages only to shrink them afterwards.
+    """
     if max_edge is None:
         max_edge = MAX_EDGE
     images = []
     with pypdfium2.PdfDocument(data) as pdf:
         for page in pdf:
-            image = page.render(scale=dpi / 72).to_pil()
-            image.thumbnail((max_edge, max_edge))
+            width, height = page.get_size()
+            scale = min(dpi / 72, max_edge / max(width, height))
+            image = page.render(scale=scale).to_pil()
+            if max(image.size) > max_edge:
+                image.thumbnail((max_edge, max_edge))
             images.append(image)
     return images
 

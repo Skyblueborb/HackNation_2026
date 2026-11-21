@@ -29,7 +29,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from o2jcore.spec.models import DocClassSpec, FieldSpec, ListSpec
+from o2jcore.spec.models import DocClassSpec, FieldSpec, ListSpec, split_segment
 
 JsonScalar = str | int | float | bool | None
 
@@ -59,12 +59,11 @@ class _Node:
 def _build_tree(fields: list[FieldSpec]) -> _Node:
     root = _Node()
     for f in fields:
-        segs = f.path.split(".")
+        segs = f.segments
         node = root
         for i, seg in enumerate(segs):
             is_last = i == len(segs) - 1
-            seg_is_list = seg.endswith("[]")
-            key = seg[:-2] if seg_is_list else seg
+            key, seg_is_list = split_segment(seg)
             child = node.children.setdefault(key, _Node())
             if seg_is_list:
                 child.is_list = True
@@ -112,40 +111,6 @@ def relative_fields(all_fields: list[FieldSpec], list_path: str) -> dict[str, Fi
             rel_field.path = rel_path
             out[rel_path] = rel_field
     return out
-
-
-def flatten_scalars_only(
-    obj: dict, fields: list[FieldSpec], path_prefix: str = ""
-) -> dict[str, JsonScalar | list]:
-    """Flatten everything except list-of-object fields, which are left as
-    raw python lists of dicts for the caller (the matcher) to handle.
-    Scalars and nested plain objects are recursed into directly; a missing
-    key is indistinguishable from an explicit null (both -> None); an
-    entirely missing list is reported as [] (not None), since callers always
-    expect a list there.
-    """
-    tree = _build_tree(fields)
-    out: dict[str, Any] = {}
-    _collect_scalars(obj if isinstance(obj, dict) else {}, tree, path_prefix, out)
-    return out
-
-
-def _collect_scalars(obj: dict, node: _Node, prefix: str, out: dict[str, Any]) -> None:
-    present = set(obj.keys())
-    for key, child in node.children.items():
-        cpath = f"{prefix}.{key}" if prefix else key
-        val = obj.get(key)
-        if child.is_list:
-            out[cpath] = val if isinstance(val, list) else []
-        elif child.children:
-            sub = val if isinstance(val, dict) else {}
-            _collect_scalars(sub, child, cpath, out)
-        else:
-            out[cpath] = val
-    extra_keys = present - set(node.children.keys())
-    for key in sorted(extra_keys):
-        extra_path = f"!extra:{prefix}.{key}" if prefix else f"!extra:{key}"
-        _collect_extra(obj[key], extra_path, out)
 
 
 def flatten_fields(

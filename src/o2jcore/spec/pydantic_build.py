@@ -18,7 +18,7 @@ normalizes.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, create_model, field_validator
 
@@ -41,9 +41,30 @@ def _validator_entry(field_key: str, normalizer_name: str) -> Any:
     return field_validator(field_key, mode="before")(classmethod(_run))
 
 
+def _enum_values(f: FieldSpec) -> list[Any] | None:
+    """Mirror jsonschema_build's enum expansion so the Pydantic model and the
+    JSON Schema accept exactly the same values."""
+    enum = f.enum
+    if enum is None:
+        return None
+    if enum.inline_values is not None:
+        return list(enum.inline_values)
+    if enum.values is not None:
+        if enum.role == "key":
+            return list(enum.values.keys())
+        if enum.role == "label":
+            return list(enum.values.values())
+    return None
+
+
 def _leaf_field_def(f: FieldSpec) -> tuple[Any, Any]:
     py_type = _KIND_TO_PY_TYPE[f.kind]
     annotation: Any = (py_type | None) if f.nullable else py_type
+    values = _enum_values(f)
+    if values:
+        annotation = Literal[*values]
+        if f.nullable:
+            annotation = annotation | None
     return (annotation, ...)
 
 

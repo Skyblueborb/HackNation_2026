@@ -1,32 +1,36 @@
-# React + TypeScript + Vite
+# Odwołania2json — frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+UI do wgrywania ZIP-a z pismami procesowymi, weryfikacji pól i eksportu JSON.
+Docelowe obciążenie: jedna przeglądarka, ZIP z maks. 3 plikami PDF.
 
-Currently, two official plugins are available:
+## Komendy
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev      # http://localhost:3000, proxy /api -> http://localhost:8000
+npm run build    # tsc -b && vite build
+npm test         # vitest run
+npm run lint     # oxlint
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## Uwierzytelnianie
+
+Frontend **nie** wysyła żadnego tokenu i nie używa zmiennych `VITE_API_TOKEN`.
+Zmienne `VITE_*` są wstawiane do bundle'a i są widoczne dla każdego użytkownika.
+
+- Backend chroni endpointy własnym `API_TOKEN` (opcjonalny, domyślnie pusty tylko na lokalny dev).
+- Dev-proxy Vite przekazuje `/api` bez modyfikacji nagłówków. Jeśli wdrożenie
+  wymaga tokenu na poziomie proxy, ustaw go po stronie proxy/backu (np. nginx
+  lub `docker-compose.yml`), nigdy w kodzie klienta.
+- Podgląd PDF używa `<iframe src={blob:...}>` — brak `react-pdf` i workera pdf.js.
+
+## Bezpieczeństwo ZIP
+
+`src/utils/zip.ts` czyta katalog centralny i nakłada limity: 30 MB na archiwum,
+32 wpisy, 20 MB na PDF. Tylko wpisy `.pdf` dostają `Blob` i object URL; URL-e
+są zwalniane przy re-uploadcie, wczytaniu z bazy i powrocie do menu.
+
+## Testy
+
+`tests/frontend.test.ts` pokrywa parsowanie ZIP-a, kwoty w `buildCanonical`,
+`hydrateForms` i wybór klasy dokumentu (LLM -> nazwa pliku).

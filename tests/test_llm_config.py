@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -82,3 +83,15 @@ def test_load_experiment_accepts_nested_plan_shape(tmp_path: Path):
     assert (exp.extractor, exp.trim, exp.candidates) == ("pdfium", False, True)
     assert (exp.classify_method, exp.retry_on_invalid, exp.fewshot) == ("llm", 2, 1)
     assert exp.ground_null is True
+
+
+def test_experiment_manifest_dict_reflects_cli_overrides():
+    exp = load_experiment(REPO_ROOT / "configs/experiments/E0_baseline.yaml")
+
+    overridden = replace(exp, split="holdout", limit=3)
+    payload = overridden.manifest_dict()
+
+    assert payload["split"] == "holdout"
+    assert payload["limit"] == 3
+    # Original stays untouched: overrides are applied as a frozen replace.
+    assert exp.manifest_dict()["limit"] is None

@@ -33,8 +33,8 @@ configs/        konfiguracja jako dane: klasy dokumentów (classes/*.yaml),
                 (paths.yaml).
 work/           artefakty uruchomień: cache, splits.json, runs/, raporty —
                 CAŁOŚĆ gitignored, nic z tego nie jest w repo.
-tests/          179 testów pytest pokrywających normalizatory, spec klas,
-                ewaluator, split, cache, manifest, OCR smoke.
+tests/          300 testów pytest; część wymaga danych konkursowych
+                (`O2J_DATA_ROOT`), bez nich testy danych kończą się błędem.
 AI/PLAN.md      oryginalny plan badawczy (po polsku).
 ```
 
@@ -52,17 +52,22 @@ elastyczność bez zmian w kodzie).
 uv sync --extra lab
 ```
 
+`uv.lock` jest źródłem prawdy dla zależności. Root `requirements.txt` nie jest
+utrzymywany (`backend/requirements.txt` to osobny plik dla obrazu backendu).
+
 - Dane konkursowe (180 plików PDF+JSON w `dane/przyklad_NN/`) żyją w
-  **osobnym repo** organizatora, poza tym repozytorium. Ścieżkę do nich
-  wskazuje `configs/paths.yaml` (`data_root`), domyślnie:
+  **osobnym repo** organizatora, poza tym repozytorium. `data_root`
+  w `configs/paths.yaml` to katalog **nad** `dane/` (root repo z danymi),
+  nie sam katalog `dane/`:
 
 ```yaml
-data_root: /Users/kacperwrobel/Documents/hackaton/dane/hacknation-2026
+data_root: /absolute/path/to/hacknation-2026-data
 work_root: work
 ```
 
-  Można ją nadpisać zmienną środowiskową `O2J_DATA_ROOT` albo flagą
-  `--data-root` większości komend CLI.
+  Nadpisz ją zmienną `O2J_DATA_ROOT` albo flagą `--data-root` wybranych
+  komend CLI. `$REPO_ROOT` w tym dokumencie oznacza root tego repo
+  (`git rev-parse --show-toplevel`), nie stałą ścieżkę na dysku.
 
 ## Komendy `lab`
 
@@ -76,13 +81,10 @@ uv run lab --help
 | `ingest` | Ekstrahuje tekst/layout z PDF-ów do cache adresowanego treścią (sha256). |
 | `eval` | Ewaluuje predykcje względem gold JSON (micro-F1 exact/fuzzy, trzy polityki null: skip/tp/strict). |
 | `board` | Odświeża i wypisuje leaderboard ze wszystkich runów pod `<work_root>/runs/`. |
-| `ocr-smoke` | Minimalny sanity-check OCR: jeden silnik (tesseract `pol`), jeden poziom szumu (`light`), kilka stron. **To nie jest pełny benchmark silnik×szum z PLAN.md §8A** — to świadomie okrojony dymny test. |
-| `ocr-prepare` | *(stub, `NotImplementedError`)* Przygotowanie wejść do porównania OCR. |
-| `ocr-run` | *(stub, `NotImplementedError`)* Uruchomienie silnika OCR na przygotowanych wejściach. |
-| `ocr-eval` | *(stub, `NotImplementedError`)* Ewaluacja wyjścia OCR (CER/WER) względem wzorca. |
-| `collect` | *(stub, `NotImplementedError`)* Zbieranie wyników z wielu runów. |
-| `plots` | *(stub, `NotImplementedError`)* Generowanie wykresów z zebranych wyników. |
-| `report` | *(stub, `NotImplementedError`)* Generowanie raportu finalnego. |
+| `ocr-smoke` | Minimalny sanity-check OCR: jeden silnik (tesseract `pol`), jeden poziom szumu (`light`), kilka stron. Nie jest to pełna siatka silnik × szum z `AI/PLAN.md` §8A. |
+| `models-check`, `predict-one`, `run`, `sweep` | Projekt LLM: health, predykcja jednego dokumentu, runy i sweepy z F1. |
+
+Pełny flow PDF → OCR → LLM → JSON i tryb zdalny opisuje `docs/CLI.md`.
 
 Przykład bramy Fazy A (identity gate — predykcje = gold, musi dać F1 = 1.0):
 
@@ -93,77 +95,55 @@ uv run lab eval --run work/runs/_identity
 uv run lab board
 ```
 
-## Status: co jest zrobione, co nie
+## Status
 
-**Zrobione (Faza A — rdzeń pomiaru, kompletna):**
-- Specyfikacja 3 klas dokumentów jako YAML + dwa niezależne emitery
-  (`build_model` → Pydantic v2 do walidacji, `build_json_schema` → ręczny
-  JSON Schema bez `$ref`/`$defs` do gramatyki llama.cpp).
-- Normalizatory (daty PL, kwoty, NIP/REGON/KRS/NRB, numery BZP/TED) —
-  zweryfikowane jako idempotentne na wszystkich 180 plikach gold.
-- Ewaluator: flatten/match/compare/metrics z trzema politykami null
-  (skip/tp/strict), exact i fuzzy, greedy alignment list.
-- `lab split` — stratyfikowany podział dev/holdout po zestawach.
-- Cache adresowany treścią (sha256 PDF) + `lab ingest`.
-- Manifest runów i `lab board`.
+- Rdzeń pomiaru: specyfikacje 3 klas jako YAML, normalizatory, ewaluator
+  (exact/fuzzy, polityki null), `lab split`, cache sha256, manifest i `board`.
+- Pipeline LLM zintegrowany: `lab predict-one`, `lab run`,
+  `ocr-pdf2json` oraz opcjonalny `llm` w odpowiedzi `/api/analyze`.
+  Profile modeli i porty: `configs/models.yaml`.
+- OCR: `ocr-api` (CUDA) i `local-ai` (MLX) udostępniają `/analyze`;
+  backend ma też ścieżkę tekstową `WEB_OCR_BACKEND=text` bez GPU i wag.
+- Pełny demo stack: frontend React/Vite + FastAPI + SQLite (`docs/BACKEND.md`).
+- `lab ocr-smoke` to dymny test jednego silnika, nie pełna siatka
+  silnik × szum z `AI/PLAN.md` §8A. Komendy `ocr-prepare`, `ocr-run`,
+  `ocr-eval`, `collect`, `plots`, `report` są obecnie stubami.
 
-**Zrobione jako okrojona wersja (Faza B — mini, NIE pełny benchmark):**
-- `lab ocr-smoke` — dymny test jednego silnika (tesseract `pol`) na jednym
-  poziomie szumu. Pełna siatka silnik × poziom szumu z `AI/PLAN.md` §8A
-  (`ocr-prepare`/`ocr-run`/`ocr-eval` na pełnej konfiguracji, wiele silników,
-  4 poziomy degradacji) **nie została zbudowana** — to świadoma decyzja, nie
-  pominięcie.
-- Lokalne serwowanie modeli LLM przez llama.cpp skonfigurowane do ręcznego
-  testowania (patrz niżej), ale **nie zintegrowane** z pipeline'em.
-
-**NIE zrobione:**
-- Brak automatycznej ekstrakcji LLM → JSON (nie istnieje `lab run` / `lab
-  extract`). Modele są obecnie testowane tylko ręcznie.
-- Brak produkcyjnej aplikacji `o2j` (CLI z `input/`/`output/`, kontrakt z
-  regulaminu konkursu) — tylko `src/o2jcore` jako rdzeń, który ta aplikacja
-  będzie mogła wykorzystać.
-- Brak pełnego silnika/benchmarku OCR i siatki poziomów szumu — tylko
-  smoke test.
-
-179/179 testów pytest przechodzi (`uv run pytest -q`).
+`uv run pytest -q` zbiera 300 testów. Testy zależne od danych konkursowych
+wymagają ustawionego `O2J_DATA_ROOT`; bez nich kończą się błędem.
 
 ## Jak ręcznie przetestować lokalne modele LLM
 
-`configs/models.yaml` definiuje 3 modele, każdy na swoim porcie (jeden
-`llama-server` = jeden proces = jeden port):
-
-| Model | Port | HF repo |
-|---|---|---|
-| `qwen3-4b` | 8081 | `Qwen/Qwen3-4B-GGUF:Q4_K_M` |
-| `qwen3-8b` | 8082 | `Qwen/Qwen3-8B-GGUF:Q4_K_M` |
-| `bielik-11b` | 8083 | `speakleash/Bielik-11B-v3.1-Instruct-GGUF:Q4_K_M` |
+Profile modeli, porty, repozytoria HF i flagi serwera są w
+`configs/models.yaml` — to jedyne źródło tych wartości. Jeden
+`llama-server` to jeden proces i jeden port; trzymaj naraz jeden model.
+Szczegóły: `docs/llm-runtime.md`.
 
 ### 1. Sprawdź, czy serwer już działa
 
+Podstaw `<port>` wartością z `configs/models.yaml`:
+
 ```bash
-curl http://localhost:8081/health
+curl http://localhost:<port>/health
 ```
 
-Odpowiedź `{"status":"ok"}` (lub podobna) oznacza, że serwer już stoi —
-nie trzeba go startować.
+Odpowiedź `{"status":"ok"}` (lub podobna) oznacza, że serwer już stoi.
 
 ### 2. Jeśli nie działa — odpal go
 
 ```bash
-llama-server -hf Qwen/Qwen3-4B-GGUF:Q4_K_M --port 8081 -c 8192 -ngl 99 --jinja
+uv run lab serve --model <profil>     # <profil> = klucz z configs/models.yaml
 ```
 
-Analogicznie dla pozostałych (zmień `-hf` i `--port` zgodnie z tabelą
-powyżej). `--jinja` jest wymagane, żeby użyć szablonu czatu z pliku GGUF.
-`-ngl 99` offloaduje wszystkie warstwy na GPU/Metal (na czysty CPU: `-ngl 0`).
-Przy ograniczeniach dysku/RAM trzymaj naraz tylko jeden model.
+`--jinja` w flagach profilu jest wymagane dla szablonu czatu z GGUF.
+`-ngl 99` offloaduje wszystkie warstwy na GPU/Metal (CPU: `-ngl 0`).
 
 ### 3. Wyślij testowe zapytanie (OpenAI-compatible)
 
 ```bash
-curl http://localhost:8081/v1/chat/completions \
+curl http://localhost:<port>/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{"model":"qwen3-4b","messages":[{"role":"user","content":"Powiedz jedno zdanie po polsku."}],"temperature":0}'
+  -d '{"model":"<profil>","messages":[{"role":"user","content":"Powiedz jedno zdanie po polsku."}],"temperature":0}'
 ```
 
 Qwen3 domyślnie generuje tryb "myślenia" — dla structured output dopisz
@@ -200,6 +180,11 @@ with `lab serve --model qwen3-8b`. Then `/analyze` gains an `llm` field with
 Production runs on an NVIDIA L4 (Ubuntu Noble) box with PyTorch CUDA, full
 BF16 `lightonai/LightOnOCR-3-4B`, preloaded at startup. Local MLX is a separate
 app used only for testing on the Mac. The two dependency sets never mix.
+
+Two credentials, easy to confuse: the standalone OCR services (`ocr-api`,
+`local-ai`) use `API_KEY` with the `X-API-Key` header. The FastAPI backend
+(`backend.main`) uses `API_TOKEN` with `X-API-Token` or `Bearer`. The backend
+does not need `API_KEY` for the `text` OCR path.
 
 ### 1. Generate an API key
 
@@ -316,7 +301,7 @@ proxy. The backend stores results in SQLite and runs OCR + optional LLM.
 ```bash
 # Backend (local Mac: MLX OCR, no LLM server needed)
 uv sync --extra serve --extra local
-API_KEY=dev-key WEB_OCR_BACKEND=mlx \
+API_TOKEN=dev-key WEB_OCR_BACKEND=mlx \
   MLX_MODEL=models/LightOnOCR-3-4B-mlx-8bit \
   uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1
 
@@ -333,7 +318,7 @@ Production on NVIDIA L4:
 ```bash
 uv sync --extra gpu --extra serve
 lab serve --model qwen3-8b-l4     # LLM: full GPU offload + flash attention
-API_KEY=<key> OCR_LLM_PROCESSOR=ocr_api.llm_processor:processor \
+API_TOKEN=<token> OCR_LLM_PROCESSOR=ocr_api.llm_processor:processor \
   OCR_LLM_MODEL=qwen3-8b-l4 \
   uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1
 ```
