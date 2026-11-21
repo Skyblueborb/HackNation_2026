@@ -9,7 +9,8 @@ from PIL import Image
 MODEL_ID = "lightonai/LightOnOCR-3-4B"
 MAX_TOKENS = int(os.environ.get("OCR_MAX_TOKENS", "2048"))
 ATTN_IMPL = os.environ.get("OCR_ATTN_IMPL", "sdpa")
-PROMPT = os.environ.get("OCR_PROMPT", "grounding")
+# LightOnOCR-3: "" = full-page transcription; "grounding" = bounding boxes only.
+PROMPT = os.environ.get("OCR_PROMPT", "")
 
 torch = None
 AutoProcessor = None

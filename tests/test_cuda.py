@@ -80,8 +80,8 @@ def install_fake_cuda(monkeypatch):
     return calls
 
 
-def test_cuda_defaults_to_grounding_prompt():
-    assert backends.PROMPT == "grounding"
+def test_cuda_defaults_to_empty_transcription_prompt():
+    assert backends.PROMPT == ""
 
 
 def test_cuda_uses_bfloat16_and_greedy(monkeypatch):
@@ -91,7 +91,8 @@ def test_cuda_uses_bfloat16_and_greedy(monkeypatch):
     assert calls["model"][1]["dtype"] == "bf16"
     assert calls["device"] == "cuda"
     assert calls["template"]["enable_thinking"] is False
-    assert calls["conversation"][0]["content"][1]["text"] == "grounding"
+    assert len(calls["conversation"][0]["content"]) == 1
+    assert calls["conversation"][0]["content"][0]["type"] == "image"
     assert calls["generate"]["do_sample"] is False
 
 

@@ -50,7 +50,7 @@ oryginału mógłby nadpisać gold JSON z danych konkursowych.
 - sprawdza, czy wagi OCR istnieją lokalnie,
 - raportuje stan backendu API (`:8000`), choć nie jest wymagany,
 - renderuje strony PDF-a przez pypdfium2: 400 DPI, dłuższy bok 2048 px,
-- wykonuje OCR w trybie grounding (prompt `grounding`),
+- wykonuje OCR z pustym promptem (`""`), czyli transkrypcję pełnej strony,
 - przekazuje pełny dokument do wybranego procesora LLM,
 - zapisuje kanoniczny JSON i wypisuje czasy: `render`, `ocr`, `llm`, `total`.
 
@@ -120,7 +120,7 @@ Szczegóły: `docs/BACKEND.md` i `docs/llm-runtime.md`.
 ## 4. Wydajność — zmierzone wartości
 
 Pomiary na tym Macu, jeden plik
-`przyklad_01/potwierdzenie_przelewu.pdf`, 1 strona, tryb grounding:
+`przyklad_01/potwierdzenie_przelewu.pdf`, 1 strona, transkrypcja (`OCR_PROMPT=""`):
 
 | Flow | Czas | Szczegóły |
 |---|---:|---|

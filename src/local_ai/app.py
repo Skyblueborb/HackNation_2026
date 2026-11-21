@@ -30,7 +30,8 @@ def validate_startup() -> None:
 
 MODEL_ID = os.environ.get("OCR_MODEL", "prithivMLmods/LightOnOCR-3-4B-MLX")
 MAX_TOKENS = int(os.environ.get("OCR_MAX_TOKENS", "2048"))
-PROMPT = os.environ.get("OCR_PROMPT", "grounding")
+# LightOnOCR-3: "" = full-page transcription; "grounding" = bounding boxes only.
+PROMPT = os.environ.get("OCR_PROMPT", "")
 PRELOAD = os.environ.get("OCR_PRELOAD", "1") == "1"
 MLX_MODEL = os.environ.get("MLX_MODEL", "models/LightOnOCR-3-4B-mlx-8bit")
 MAX_UPLOAD_BYTES = int(os.environ.get("OCR_MAX_UPLOAD_BYTES", str(50 * 1024 * 1024)))

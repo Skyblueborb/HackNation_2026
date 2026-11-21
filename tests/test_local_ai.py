@@ -39,8 +39,8 @@ def test_model_id_can_be_overridden_for_one_trial(monkeypatch):
     importlib.reload(app_module)
 
 
-def test_local_defaults_to_grounding_prompt():
-    assert app_module.PROMPT == "grounding"
+def test_local_defaults_to_empty_transcription_prompt():
+    assert app_module.PROMPT == ""
 
 
 def test_local_mlx_extracts_text(monkeypatch):
@@ -48,7 +48,7 @@ def test_local_mlx_extracts_text(monkeypatch):
     install_fake_mlx(monkeypatch, seen)
     result = app_module.MlxBackend().extract_page(Image.new("RGB", (8, 8)))
     assert result == "hello"
-    assert seen["prompt"] == "grounding"
+    assert seen["prompt"] == ""
     assert seen["kw"]["enable_thinking"] is False
     assert isinstance(seen["image"][0], Image.Image)
 

@@ -27,7 +27,7 @@ share imports or dependencies.
   not part of this change.
 - Uvicorn `--workers 1`; one `asyncio.Lock` around inference.
 - Page render: 400 DPI, longest edge 2048 px. The shipped default prompt is
-  `grounding` (`OCR_PROMPT`); set `OCR_PROMPT=""` for plain transcription.
+  `""` (plain transcription); `OCR_PROMPT=grounding` is opt-in for bounding boxes.
 
 ## Approaches
 

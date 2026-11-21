@@ -243,11 +243,11 @@ curl -H 'X-API-Key: <generated-key>' \
 
 Response: `{"backend": "cuda", "pages": [{"page": 1, "text": "..."}]}`.
 
-OCR runs in grounding mode by default (`OCR_PROMPT=grounding`). Output is
-markdown with headings, tables, lists and block labels with bounding boxes, e.g.
-`![title](80,70,920,140)` followed by `# Nagłówek`. Set `OCR_PROMPT=""` for
-plain transcription markdown without bounding boxes. Grounding adds about 25%
-more output tokens.
+OCR runs full-page transcription by default (`OCR_PROMPT=""`). Output is plain
+markdown with headings, tables and lists. Grounding is opt-in with
+`OCR_PROMPT=grounding`: it adds bounding-box labels such as
+`![title](80,70,920,140)` but does not reliably transcribe long documents, so
+do not use it for PDF-to-JSON extraction.
 
 Speed knobs: `OCR_MAX_EDGE` (default `2048`) caps page pixels;
 `OCR_MAX_TOKENS` (default `2048`) caps output length. `OCR_ATTN_IMPL` defaults
@@ -275,7 +275,6 @@ Default stays the 4B 8-bit model. To try the smaller model once:
 bash scripts/make-mlx-model-08b.sh
 OCR_MODEL=fwgpiyawudk/LightOnOCR-3-0.8B-MLX-8bit \
   MLX_MODEL=models/LightOnOCR-3-0.8B-mlx-8bit \
-  OCR_PROMPT=grounding \
   API_KEY=<local-test-key> \
   uv run --extra local --extra serve \
   local-ai serve --host 0.0.0.0 --port 8001 --verbose
@@ -283,9 +282,8 @@ OCR_MODEL=fwgpiyawudk/LightOnOCR-3-0.8B-MLX-8bit \
 
 `/health` reports the 0.8B id. Omit the env vars next run to return to 4B.
 
-The grounding prompt string is exactly `grounding`; it produces markdown with
-headings plus `![label](x1,y1,x2,y2)` block boxes. Use `OCR_PROMPT=""` for plain
-markdown without boxes.
+Both MLX models use the same empty-prompt transcription default. Set
+`OCR_PROMPT=grounding` only when bounding boxes are needed.
 
 Keep the Mac awake during judging:
 
