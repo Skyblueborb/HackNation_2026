@@ -77,7 +77,7 @@ def _load_processor():
 
 def run_document(
     data: bytes, filename: str, model_id: str
-) -> tuple[dict[str, Any], dict[str, float]]:
+) -> tuple[dict[str, Any], dict[str, float], list[str]]:
     t0 = time.perf_counter()
     images = render_pages(data)
     t1 = time.perf_counter()
@@ -161,7 +161,7 @@ def run_remote(
     *,
     doc_class: str | None = None,
     client_token: str = "cli-remote",
-) -> tuple[dict[str, Any], dict[str, float]]:
+) -> tuple[dict[str, Any], dict[str, float], list[str]]:
     started = time.perf_counter()
     response = post_analyze(
         base_url=base_url,

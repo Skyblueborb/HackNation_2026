@@ -2,11 +2,18 @@ import json
 import sys
 import types
 from pathlib import Path
+from typing import Any, get_type_hints
 
 import pytest
 
 import ocr_api.pdf_to_json as tool
 from ocr_common.ports import OCRDocument
+
+
+def test_run_functions_declare_text_tuple_return():
+    expected = tuple[dict[str, Any], dict[str, float], list[str]]
+    assert get_type_hints(tool.run_document)["return"] == expected
+    assert get_type_hints(tool.run_remote)["return"] == expected
 
 
 def test_write_result_uses_pdf_basename(tmp_path):
