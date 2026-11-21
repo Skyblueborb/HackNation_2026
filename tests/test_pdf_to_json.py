@@ -19,6 +19,25 @@ def test_check_servers_fails_clearly_when_llm_down(monkeypatch):
         tool.check_servers(Path("/tmp/model.gguf"), "local-llm")
 
 
+def test_doc_class_from_filename():
+    assert tool.doc_class_from_filename(Path("odwolanie.pdf")) == "odwolanie"
+    assert tool.doc_class_from_filename(Path("pelnomocnictwo.pdf")) == "pelnomocnictwo"
+    assert tool.doc_class_from_filename(Path("przelew.pdf")) == "przelew"
+
+
+def test_run_remote_uses_api_response(monkeypatch, tmp_path):
+    pdf = tmp_path / "przelew.pdf"
+    pdf.write_bytes(b"%PDF")
+    monkeypatch.setattr(
+        tool,
+        "post_analyze",
+        lambda **kw: {"canonical_json": {"ok": True}, "backend": "cuda", "pages": []},
+    )
+    result, timings = tool.run_remote(pdf, "http://192.168.1.220:8000", "token")
+    assert result == {"ok": True}
+    assert timings["total"] >= 0
+
+
 def test_run_document_returns_result_and_timings(monkeypatch):
     class FakeBackend:
         def extract_page(self, image):

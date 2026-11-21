@@ -104,6 +104,74 @@ def run_document(
     }
 
 
+def doc_class_from_filename(pdf: Path) -> str:
+    name = pdf.stem.lower()
+    if "odwol" in name or "odwoł" in name:
+        return "odwolanie"
+    if "pelnom" in name or "pełnom" in name:
+        return "pelnomocnictwo"
+    if "przelew" in name or "platn" in name or "trans" in name:
+        return "przelew"
+    return "odwolanie"
+
+
+def post_analyze(
+    *,
+    base_url: str,
+    pdf: Path,
+    token: str | None,
+    doc_class: str,
+    client_token: str,
+    client_doc_id: str,
+) -> dict[str, Any]:
+    """POST one PDF to a remote backend /api/analyze."""
+    import httpx
+
+    headers = {"X-API-Token": token} if token else {}
+    url = f"{base_url.rstrip('/')}/api/analyze"
+    with pdf.open("rb") as handle:
+        response = httpx.post(
+            url,
+            data={
+                "client_token": client_token,
+                "client_doc_id": client_doc_id,
+                "doc_class": doc_class,
+            },
+            files={"file": (pdf.name, handle, "application/pdf")},
+            headers=headers,
+            timeout=300.0,
+        )
+    response.raise_for_status()
+    return response.json()
+
+
+def run_remote(
+    pdf: Path,
+    base_url: str,
+    token: str | None,
+    *,
+    doc_class: str | None = None,
+    client_token: str = "cli-remote",
+) -> tuple[dict[str, Any], dict[str, float]]:
+    started = time.perf_counter()
+    response = post_analyze(
+        base_url=base_url,
+        pdf=pdf,
+        token=token,
+        doc_class=doc_class or doc_class_from_filename(pdf),
+        client_token=client_token,
+        client_doc_id=f"cli-{pdf.stem}",
+    )
+    elapsed = time.perf_counter() - started
+    canonical = response.get("canonical_json")
+    if not isinstance(canonical, dict):
+        pages = response.get("pages", [])
+        canonical = {
+            "raw_text": "\n\n".join(page.get("text", "") for page in pages)
+        }
+    return canonical, {"total": elapsed}
+
+
 def write_result(pdf: Path, result: dict[str, Any], out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{pdf.stem}.json"
@@ -125,7 +193,33 @@ def main() -> None:
         default=os.environ.get("OCR_LLM_MODEL", DEFAULT_LLM_PROFILE),
         help="key in configs/models.yaml",
     )
+    parser.add_argument(
+        "--remote",
+        help="backend base URL, e.g. http://192.168.1.220:8000 (no local models needed)",
+    )
+    parser.add_argument(
+        "--api-token",
+        default=os.environ.get("O2J_API_TOKEN"),
+        help="X-API-Token for the remote backend",
+    )
+    parser.add_argument("--doc-class", help="override document class for --remote")
     args = parser.parse_args()
+
+    if not args.pdf.is_file():
+        raise SystemExit(f"PDF not found: {args.pdf}")
+
+    if args.remote:
+        result, timings = run_remote(
+            args.pdf,
+            args.remote,
+            args.api_token,
+            doc_class=args.doc_class,
+        )
+        out = write_result(args.pdf, result, args.out_dir)
+        print(f"[ok] remote backend: {args.remote}")
+        print(f"total={timings['total']:.2f}s")
+        print(f"wrote {out}")
+        return
 
     os.environ["MLX_MODEL"] = args.ocr_model
     os.environ["OCR_LLM_MODEL"] = args.llm_profile
@@ -135,9 +229,6 @@ def main() -> None:
     print(f"[ok] LLM {args.llm_profile}: {base_url}")
     print(f"[ok] OCR weights: {args.ocr_model}")
     print(f"[i] backend API: {'running' if backend_health() else 'not needed/stopped'}")
-
-    if not args.pdf.is_file():
-        raise SystemExit(f"PDF not found: {args.pdf}")
 
     result, timings = run_document(
         args.pdf.read_bytes(), args.pdf.name, args.ocr_model

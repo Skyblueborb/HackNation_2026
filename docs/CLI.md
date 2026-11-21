@@ -65,6 +65,29 @@ uv run ocr-pdf2json <pdf> \
 Jeśli LLM nie działa, skrypt kończy błędem z komunikatem zawierającym
 `uv run lab serve --model <profil>`.
 
+## 2b. Tryb zdalny (inna maszyna w LAN)
+
+Jeśli modele działają na tym Macu, inna maszyna nie potrzebuje wag ani LLM.
+Użyj `--remote` z adresem backendu:
+
+```bash
+uv run ocr-pdf2json przelew.pdf \
+  --remote http://192.168.1.220:8000 \
+  --out-dir output \
+  --api-token <token>          # jeśli backend ma API_TOKEN
+```
+
+Tryb zdalny:
+- nie sprawdza lokalnych wag ani lokalnego `llama-server`,
+- wysyła PDF do `POST /api/analyze`,
+- typ dokumentu wywnioskuje z nazwy pliku (`--doc-class` nadpisuje),
+- zapisuje `<basename>.json` jak w trybie lokalnym,
+- wypisuje czas całego żądania.
+
+Backend musi nasłuchiwać na `0.0.0.0:8000` (jest), a maszyna kliencka musi
+mieć dostęp do portu 8000. Ustaw `API_TOKEN` na backendzie i przekaż ten sam
+token przez `--api-token` / `O2J_API_TOKEN`.
+
 ## 3. Modele
 
 | Rola | Konfiguracja | Model | Wagi | Środowisko | Port |
