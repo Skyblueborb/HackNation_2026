@@ -1,4 +1,6 @@
 import io
+import json
+import logging
 from pathlib import Path
 
 import pytest
@@ -159,6 +161,57 @@ def test_scan_llm_probe_is_na(tmp_path):
         combo_dir=tmp_path / "combo", backend=None, processor=object(),
     )
     assert result["status"] == "N/A"
+
+
+def test_jsonable_handles_path_lists(tmp_path):
+    payload = mc._jsonable(
+        {"data_root": tmp_path, "pdf_paths": [tmp_path / "a.pdf", tmp_path / "b.pdf"]}
+    )
+    assert json.loads(json.dumps(payload))["pdf_paths"] == [
+        str(tmp_path / "a.pdf"),
+        str(tmp_path / "b.pdf"),
+    ]
+
+
+def test_select_documents_records_missing_pdf(tmp_path):
+    root = _make_data_root(tmp_path, n_sets=2)
+    (root / "dane" / "przyklad_02" / "odwolanie.pdf").unlink()
+    missing: list[str] = []
+    mc.select_documents(
+        root, corpus="przyklad", count=0, random_sample=False, seed=42,
+        sets=None, pdf_paths=None, missing=missing,
+    )
+    assert "przyklad_02" in missing
+
+
+def test_select_documents_rejects_missing_explicit_pdf(tmp_path):
+    root = _make_data_root(tmp_path, n_sets=1)
+    absent = root / "dane" / "przyklad_01" / "absent.pdf"
+    with pytest.raises(ValueError, match="PDF not found"):
+        mc.select_documents(
+            root, corpus="przyklad", count=1, random_sample=False, seed=42,
+            sets=None, pdf_paths=[absent],
+        )
+
+
+def test_run_case_logs_progress(caplog, tmp_path):
+    root = _make_data_root(tmp_path, n_sets=1)
+    case = mc.select_documents(
+        root, corpus="przyklad", count=1, random_sample=False, seed=42,
+        sets=None, pdf_paths=None,
+    )[0]
+
+    class FakeBackend:
+        def extract_page(self, image):
+            return "TEXT"
+
+    with caplog.at_level(logging.INFO, logger="lab.model_check"):
+        mc.run_case(
+            case, ocr_model="fake", llm_profile=None, analysis="ocr",
+            combo_dir=tmp_path / "combo", backend=FakeBackend(), processor=None,
+        )
+    assert "przyklad_01" in caplog.text
+    assert "ocr" in caplog.text.lower()
 
 
 def test_aggregate_speed_known_values():

@@ -631,6 +631,7 @@ def model_check_cmd(
     ),
     analysis: str = typer.Option("all", "--analysis", help="e2e, ocr, llm or all"),
     out_dir: Path | None = typer.Option(None, "--out-dir"),
+    verbose: bool = typer.Option(False, "--verbose", help="Show debug-level progress."),
 ) -> None:
     """Benchmark OCR models and LLM profiles, saving raw OCR text for diagnosis."""
     from lab import model_check as mc
@@ -680,6 +681,7 @@ def model_check_cmd(
         "analysis": analyses,
         "out_dir": out_dir if out_dir is not None else paths.work_root() / "model-check",
     }
+    mc.configure_logging(verbose)
     run_dir = mc.execute_model_check(options)
     typer.echo(f"model-check: {run_dir}")
     typer.echo(f"summary: {run_dir / 'summary.md'}")

@@ -7,6 +7,7 @@ run OCR or LLMs; those probes are added by later tasks in the same module.
 from __future__ import annotations
 
 import json
+import logging
 import random
 import shutil
 import statistics
@@ -21,6 +22,21 @@ from o2jcore.spec.loader import load_all_classes
 from o2jcore.text.pdf_text import extract_pages
 from ocr_api.pdf_to_json import run_document, write_ocr_text
 from ocr_common.ports import OCRDocument, OCRPage
+
+logger = logging.getLogger("lab.model_check")
+
+
+def configure_logging(verbose: bool = False) -> None:
+    """Attach a progress handler once and set the requested level."""
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s model-check %(message)s")
+    )
+    if not any(getattr(h, "_model_check", False) for h in logger.handlers):
+        handler._model_check = True  # type: ignore[attr-defined]
+        logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG if verbose else logging.INFO)
+
 
 _SCAN_DIR_TO_CLASS = {
     "odwolania": "odwolanie",
@@ -63,6 +79,8 @@ def discover_sets(data_root: Path, corpus: str) -> list[str]:
 
 
 def _case_for_pdf(pdf: Path, dane: Path) -> DocumentCase:
+    if not pdf.is_file():
+        raise ValueError(f"PDF not found: {pdf}")
     try:
         rel = pdf.resolve().relative_to(dane.resolve())
     except ValueError as exc:
@@ -94,18 +112,26 @@ def _case_for_pdf(pdf: Path, dane: Path) -> DocumentCase:
     raise ValueError(f"unrecognised PDF path under data_root: {pdf}")
 
 
-def _cases_for_set(set_id: str, dane: Path) -> list[DocumentCase]:
+def _cases_for_set(
+    set_id: str, dane: Path, missing: list[str] | None = None
+) -> list[DocumentCase]:
     if set_id.startswith("skany_"):
         _, dir_name, scan_id = set_id.split("_", 2)
         pdf = dane / "skany" / dir_name / scan_id / f"{scan_id}.pdf"
         if not pdf.is_file():
+            if missing is not None:
+                missing.append(set_id)
             return []
         return [_case_for_pdf(pdf, dane)]
     cases: list[DocumentCase] = []
+    found = False
     for spec in _specs().values():
         pdf = dane / set_id / f"{spec.pdf_stem}.pdf"
         if pdf.is_file():
+            found = True
             cases.append(_case_for_pdf(pdf, dane))
+    if not found and missing is not None:
+        missing.append(set_id)
     return cases
 
 
@@ -118,6 +144,7 @@ def select_documents(
     seed: int,
     sets: list[str] | None,
     pdf_paths: list[Path] | None,
+    missing: list[str] | None = None,
 ) -> list[DocumentCase]:
     """Resolve CLI selection options into concrete document cases."""
     dane = paths.validate_data_root(data_root) / "dane"
@@ -133,7 +160,7 @@ def select_documents(
             selected = pool
     cases: list[DocumentCase] = []
     for set_id in selected:
-        cases.extend(_cases_for_set(set_id, dane))
+        cases.extend(_cases_for_set(set_id, dane, missing))
     return cases
 
 
@@ -192,8 +219,10 @@ def run_case(
     combo_dir = Path(combo_dir)
     ocr_dir = combo_dir / "ocr" / case.set_id
     ocr_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("case %s/%s analysis=%s", case.set_id, case.class_id, analysis)
 
     if analysis == "llm" and not case.has_text_layer:
+        logger.info("  N/A: %s has no text layer; skipping LLM probe", case.set_id)
         return {
             "set_id": case.set_id,
             "status": "N/A",
@@ -406,16 +435,20 @@ def write_summary(run_dir: Path, results: list[dict[str, Any]]) -> None:
     (run_dir / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _jsonable(options: dict[str, Any]) -> dict[str, Any]:
-    return {
-        key: str(value) if isinstance(value, Path) else value
-        for key, value in options.items()
-    }
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, list):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _jsonable(item) for key, item in value.items()}
+    return value
 
 
 def execute_model_check(options: dict[str, Any]) -> Path:
     """Run every requested combo and return the run directory."""
     data_root = Path(options["data_root"])
+    missing: list[str] = []
     cases = select_documents(
         data_root,
         corpus=options["corpus"],
@@ -424,9 +457,12 @@ def execute_model_check(options: dict[str, Any]) -> Path:
         seed=options["seed"],
         sets=options.get("sets"),
         pdf_paths=options.get("pdf_paths"),
+        missing=missing,
     )
     if not cases:
         raise ValueError("no documents matched the selection")
+    if missing:
+        logger.warning("missing PDFs skipped: %s", ", ".join(missing))
 
     analyses = options["analysis"]
     ocr_models = options["ocr_models"]
@@ -438,6 +474,18 @@ def execute_model_check(options: dict[str, Any]) -> Path:
     )
     specs = _specs()
     results: list[dict[str, Any]] = []
+    combos: list[tuple[str, str, str | None]] = []
+    for analysis_name in analyses:
+        ocr_values = ["text"] if analysis_name == "llm" else ocr_models
+        llm_values = [None] if analysis_name == "ocr" else list(llm_profiles)
+        for ocr_value in ocr_values:
+            for llm_value in llm_values:
+                combos.append((analysis_name, ocr_value, llm_value))
+    logger.info(
+        "run dir=%s cases=%d analyses=%s combos=%d",
+        run_dir, len(cases), ",".join(analyses), len(combos),
+    )
+    combo_index = 0
 
     for analysis in analyses:
         ocr_values = ["text"] if analysis == "llm" else ocr_models
@@ -450,6 +498,11 @@ def execute_model_check(options: dict[str, Any]) -> Path:
                 llm_tag = "none" if llm_profile is None else llm_profile
                 combo_dir = run_dir / analysis / ocr_tag / llm_tag
                 combo_dir.mkdir(parents=True, exist_ok=True)
+                combo_index += 1
+                logger.info(
+                    "[%d/%d] analysis=%s ocr=%s llm=%s",
+                    combo_index, len(combos), analysis, ocr_tag, llm_tag,
+                )
 
                 from local_ai.app import MlxBackend
                 from ocr_api.llm_processor import get_processor
@@ -467,6 +520,12 @@ def execute_model_check(options: dict[str, Any]) -> Path:
                         combo_dir=combo_dir,
                         backend=backend,
                         processor=processor,
+                    )
+                    timings = row["timings"]
+                    logger.info(
+                        "  render=%.2fs ocr=%.2fs llm=%.2fs total=%.2fs status=%s",
+                        timings["render"], timings["ocr"], timings["llm"],
+                        timings["total"], row.get("status"),
                     )
                     if row.get("status") != "N/A":
                         rows.append(
@@ -488,6 +547,14 @@ def execute_model_check(options: dict[str, Any]) -> Path:
                 )
                 set_ids = sorted({case.set_id for case in scored_cases})
                 score = score_combo(scored_cases, combo_dir, specs, set_ids)
+                score["data_skipped"] = sorted(
+                    set(score["data_skipped"]) | set(missing)
+                )
+                logger.info(
+                    "  scored=%d exact_f1_skip=%.4f fuzzy_f1_skip=%.4f skipped=%d",
+                    score["n_files_evaluated"], score["exact_f1_skip"],
+                    score["fuzzy_f1_skip"], len(score["data_skipped"]),
+                )
                 results.append(
                     {
                         "analysis": analysis,
@@ -499,4 +566,5 @@ def execute_model_check(options: dict[str, Any]) -> Path:
                 )
 
     write_summary(run_dir, results)
+    logger.info("summary written to %s", run_dir / "summary.md")
     return run_dir

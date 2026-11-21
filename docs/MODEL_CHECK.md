@@ -120,10 +120,27 @@ wiele F1 traci LLM przez sam OCR.
 | `--llm-profile ID` | `local-llm` | Profil z `configs/models.yaml`; powtarzalne |
 | `--analysis LIST` | `all` | `e2e`, `ocr`, `llm`, `all` |
 | `--out-dir PATH` | `work/model-check` | Katalog główny wyników |
+| `--verbose` | off | Szczegółowe logi debugowe (domyślnie są logi INFO) |
 
 Harness zawsze zapisuje artefakt OCR. Nie ma osobnej flagi `--save-ocr` —
 ta flaga należy do `ocr-pdf2json`, z którego mechanizmów (`run_document`,
 `write_ocr_text`) harness korzysta.
+
+## 4b. Logi w trakcie działania
+
+Harness domyślnie loguje postęp na stderr w formacie:
+
+```text
+2026-11-22 00:15:10,123 INFO model-check run dir=... cases=3 analyses=e2e,ocr,llm combos=6
+2026-11-22 00:15:10,124 INFO model-check [1/6] analysis=e2e ocr=LightOnOCR-3-4B-mlx-8bit llm=local-llm
+2026-11-22 00:15:10,200 INFO model-check case przyklad_01/odwolanie analysis=e2e
+2026-11-22 00:16:02,900 INFO model-check   render=0.01s ocr=52.30s llm=10.07s total=62.38s status=ok
+2026-11-22 00:16:03,100 INFO model-check   scored=1 exact_f1_skip=0.8123 fuzzy_f1_skip=0.8400 skipped=0
+```
+
+Widać więc, który etap trwa, dla którego dokumentu i ile zajął. Dodanie
+`--verbose` ustawia poziom `DEBUG` i pokazuje dodatkowe szczegóły.
+Brakujące PDF-y są wpisywane do `data_skipped` i logowane jako ostrzeżenie.
 
 ## 5. Struktura wyników
 

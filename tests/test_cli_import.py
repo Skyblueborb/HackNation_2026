@@ -24,6 +24,7 @@ def test_model_check_command_is_registered():
     result = CliRunner().invoke(lab.cli.app, ["model-check", "--help"])
     assert result.exit_code == 0
     assert "--corpus" in result.output
+    assert "--verbose" in result.output
     assert "--save-ocr" not in result.output
 
 
