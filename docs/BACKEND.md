@@ -34,11 +34,12 @@ Wszystkie opisane są w `.env.example`. Dwie łatwo pomylić:
 
 * **`API_TOKEN`** — chroni *ten* backend (`X-API-Token` albo `Bearer`).
   Puste = brak autoryzacji, tylko do lokalnego dev-u.
-* **`API_KEY`** — wymagany przez `ocr_common` (wspólny moduł usług OCR).
-  Backend potrzebuje go, gdy wołane jest `/api/analyze`; bez niego ten
-  endpoint zwraca 500 (`RuntimeError: API_KEY must be set`).
+* **`API_KEY`** — wymagany tylko przez samodzielne usługi OCR
+  (`ocr-api serve`, `local-ai serve`). Backend nie potrzebuje go; klucz jest
+  rozwiązywany leniwie przy żądaniach chronionych przez `verify_key`.
 
-`CORS_ORIGINS` **nie może zostać puste** — puste włącza wildcard `*`.
+`CORS_ORIGINS` nie może być puste. Puste wartości mają teraz bezpieczną
+domyślną wartość `http://localhost:3000`; wildcard `*` wyłącza credentials.
 
 ## Skąd brany jest tekst dokumentu
 
