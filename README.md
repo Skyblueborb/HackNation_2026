@@ -8,6 +8,7 @@ jako pierwsza — ewaluator, podział dev/holdout, cache, normalizatory — żeb
 porównania modeli LLM i wariantów OCR były wiarygodne, a nie oparte na "wygląda
 lepiej". Pełny research rationale: `AI/PLAN.md` (oryginalny plan) oraz plik
 planu wykonawczego z korektami, patrz sekcja *Dokumentacja* na końcu.
+Komendy CLI, modele i zmierzona wydajność: `docs/CLI.md`.
 
 ## Struktura projektu
 
