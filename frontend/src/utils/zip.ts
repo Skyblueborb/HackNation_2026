@@ -1,7 +1,6 @@
 /**
- * Lekki, bezbiblioteczny ekstraktor plików ZIP dla przeglądarek.
- * Wykorzystuje natywne API DecompressionStream('deflate-raw') wspierane
- * we wszystkich współczesnych przeglądarkach (Chrome 80+, Firefox 102+, Safari 16.4+).
+ * ZIP reader for browser uploads. Uses the central directory (not local header
+ * guessing), so macOS archives with data descriptors extract correctly.
  */
 
 export interface ExtractedFile {
@@ -11,89 +10,85 @@ export interface ExtractedFile {
   size: number;
 }
 
+const EOCD = 0x06054b50;
+const CENTRAL = 0x02014b50;
+const LOCAL = 0x04034b50;
+
 export async function extractZipFiles(file: File): Promise<ExtractedFile[]> {
-  const buffer = await file.arrayBuffer();
-  const view = new DataView(buffer);
-  const bytes = new Uint8Array(buffer);
-  const files: ExtractedFile[] = [];
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
-  let offset = 0;
-  const len = view.byteLength;
-
-  while (offset + 30 < len) {
-    // Sprawdź sygnaturę Local File Header: 0x04034b50 ("PK\x03\x04")
-    const sig = view.getUint32(offset, true);
-    if (sig !== 0x04034b50) {
+  // End of central directory: last 64 KiB is enough for normal archives.
+  const start = Math.max(0, bytes.length - 65557);
+  let eocd = -1;
+  for (let i = bytes.length - 4; i >= start; i--) {
+    if (view.getUint32(i, true) === EOCD) {
+      eocd = i;
       break;
     }
+  }
+  if (eocd < 0) throw new Error('Nie znaleziono katalogu ZIP (EOCD).');
 
-    const flags = view.getUint16(offset + 6, true);
-    const method = view.getUint16(offset + 8, true);
-    let compSize = view.getUint32(offset + 18, true);
-    let uncompSize = view.getUint32(offset + 22, true);
-    const nameLen = view.getUint16(offset + 26, true);
-    const extraLen = view.getUint16(offset + 28, true);
+  const count = view.getUint16(eocd + 10, true);
+  const centralOffset = view.getUint32(eocd + 16, true);
+  const decoder = new TextDecoder('utf-8');
+  const files: ExtractedFile[] = [];
 
-    const nameBytes = bytes.subarray(offset + 30, offset + 30 + nameLen);
-    const filename = new TextDecoder('utf-8').decode(nameBytes);
-
-    const dataStart = offset + 30 + nameLen + extraLen;
-
-    if (compSize === 0 && uncompSize === 0 && (flags & 0x08)) {
-      let nextHeader = dataStart;
-      while (nextHeader + 4 < len) {
-        const nextSig = view.getUint32(nextHeader, true);
-        if (nextSig === 0x08074b50) {
-          compSize = view.getUint32(nextHeader + 4, true);
-          uncompSize = view.getUint32(nextHeader + 8, true);
-          break;
-        } else if (nextSig === 0x04034b50 || nextSig === 0x02014b50) {
-          compSize = nextHeader - dataStart;
-          uncompSize = compSize;
-          break;
-        }
-        nextHeader++;
-      }
+  let offset = centralOffset;
+  for (let n = 0; n < count; n++) {
+    if (offset + 46 > bytes.length || view.getUint32(offset, true) !== CENTRAL) {
+      throw new Error('Uszkodzony katalog ZIP.');
     }
+    const method = view.getUint16(offset + 10, true);
+    const compressedSize = view.getUint32(offset + 20, true);
+    const nameLength = view.getUint16(offset + 28, true);
+    const extraLength = view.getUint16(offset + 30, true);
+    const commentLength = view.getUint16(offset + 32, true);
+    const localOffset = view.getUint32(offset + 42, true);
+    const name = decoder.decode(bytes.subarray(offset + 46, offset + 46 + nameLength));
 
-    const compData = bytes.subarray(dataStart, dataStart + compSize);
+    if (
+      !name.endsWith('/') &&
+      !name.includes('__MACOSX/') &&
+      !name.split('/').pop()?.startsWith('._')
+    ) {
+      if (view.getUint32(localOffset, true) !== LOCAL) {
+        throw new Error(`Uszkodzony nagłówek pliku ${name}.`);
+      }
+      const localNameLength = view.getUint16(localOffset + 26, true);
+      const localExtraLength = view.getUint16(localOffset + 28, true);
+      const dataStart = localOffset + 30 + localNameLength + localExtraLength;
+      const compressed = bytes.subarray(
+        dataStart,
+        dataStart + compressedSize,
+      );
 
-    try {
       let fileBytes: Uint8Array;
       if (method === 0) {
-        fileBytes = compData;
-      } else if (method === 8) {
-        if (typeof DecompressionStream !== 'undefined') {
-          const ds = new DecompressionStream('deflate-raw');
-          const decompressedStream = new Response(compData.slice()).body?.pipeThrough(ds);
-          const decompressedBuffer = await new Response(decompressedStream).arrayBuffer();
-          fileBytes = new Uint8Array(decompressedBuffer);
-        } else {
-          fileBytes = compData;
-        }
+        fileBytes = compressed;
+      } else if (method === 8 && typeof DecompressionStream !== 'undefined') {
+        const stream = new Blob([compressed.slice() as BlobPart]).stream();
+        const decompressed = stream.pipeThrough(
+          new DecompressionStream('deflate-raw'),
+        );
+        fileBytes = new Uint8Array(await new Response(decompressed).arrayBuffer());
       } else {
-        fileBytes = compData;
+        throw new Error(`Nieobsługiwana kompresja ZIP (${method}) w pliku ${name}.`);
       }
 
-      if (!filename.endsWith('/')) {
-        const mime = filename.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream';
-        const blob = new Blob([fileBytes.slice() as unknown as BlobPart], { type: mime });
-        const url = URL.createObjectURL(blob);
-        files.push({
-          name: filename.split('/').pop() || filename,
-          blob,
-          url,
-          size: fileBytes.byteLength,
-        });
-      }
-    } catch (e) {
-      console.warn(`Nie udało się zdekompresować pliku ${filename}:`, e);
+      const mime = name.toLowerCase().endsWith('.pdf')
+        ? 'application/pdf'
+        : 'application/octet-stream';
+      const blob = new Blob([fileBytes.slice() as BlobPart], { type: mime });
+      files.push({
+        name: name.split('/').pop() || name,
+        blob,
+        url: URL.createObjectURL(blob),
+        size: fileBytes.byteLength,
+      });
     }
 
-    offset = dataStart + compSize;
-    if (offset + 4 < len && view.getUint32(offset, true) === 0x08074b50) {
-      offset += 16;
-    }
+    offset += 46 + nameLength + extraLength + commentLength;
   }
 
   return files;
