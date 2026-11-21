@@ -1,5 +1,7 @@
 import { useState, useRef } from 'react';
 import { extractZipFiles, type ExtractedFile } from './utils/zip';
+import { ingestDocument, listDocuments, getClientToken } from './api';
+import { hydrateForms } from './hydrate';
 
 interface OdwolanieKioFields {
   data: string;
@@ -301,6 +303,25 @@ export default function App() {
     }
   };
 
+  // Pobranie wyników z bazy danych backendu (jeśli backend jest uruchomiony).
+  const loadFromBackend = async () => {
+    try {
+      const docs = await listDocuments();
+      if (docs.length === 0) {
+        setSaveNotification('W bazie nie ma jeszcze żadnych wyników.');
+      } else {
+        const forms = hydrateForms(docs);
+        if (forms.odwolanie) setOdwolanieData(forms.odwolanie);
+        if (forms.pelnomocnictwo) setPelnomocnictwoData(forms.pelnomocnictwo);
+        if (forms.przelew) setPrzelewData(forms.przelew);
+        setSaveNotification(`Wczytano ${docs.length} dokument(ów) z bazy danych.`);
+      }
+    } catch {
+      setSaveNotification('Nie udało się połączyć z bazą danych (backend może być wyłączony).');
+    }
+    setTimeout(() => setSaveNotification(null), 4000);
+  };
+
   const handleFileSelection = (file: File) => {
     const isZip =
       file.name.toLowerCase().endsWith('.zip') ||
@@ -378,14 +399,28 @@ export default function App() {
     }
   };
 
-  const handleSaveData = () => {
-    setSaveNotification(`Zapisano dane dla: ${docSlots[currentDocIndex].title}`);
-    setTimeout(() => setSaveNotification(null), 3000);
+  const handleSaveData = async () => {
+    try {
+      const result = await ingestDocument({
+        client_token: getClientToken(),
+        doc_class: activeDoc.id,
+        canonical_json: getCanonicalJson(),
+        source_name: activeDoc.file?.name ?? activeDoc.defaultFilename,
+      });
+      setSaveNotification(
+        result.correction_session_id
+          ? 'Zapisano poprawkę — trafiła do bazy jako dane do douczania modelu.'
+          : 'Zapisano wynik w bazie danych.'
+      );
+    } catch {
+      setSaveNotification('Backend niedostępny — zmiany zostały w formularzu (demo działa dalej).');
+    }
+    setTimeout(() => setSaveNotification(null), 4000);
   };
 
   // Generowanie kanonicznego JSON zgodnego 1:1 z oczekiwane-json
-  const getCanonicalJson = () => {
-    if (currentDocIndex === 0) {
+  const getCanonicalJson = (index: number = currentDocIndex) => {
+    if (index === 0) {
       const { OdwolanieKIO, Odwolujacy, Zamawiajacy, ZamowieniePubliczne } = odwolanieData;
       return {
         OdwolanieKIO: {
@@ -432,7 +467,7 @@ export default function App() {
           tytul: ZamowieniePubliczne.tytul || null,
         },
       };
-    } else if (currentDocIndex === 1) {
+    } else if (index === 1) {
       const { mocodawca, pelnomocnicy } = pelnomocnictwoData;
       return {
         mocodawca: [
@@ -472,6 +507,32 @@ export default function App() {
   };
 
   const activeDoc = docSlots[currentDocIndex];
+
+  // Zapisuje wszystkie trzy dokumenty jednym kliknięciem.
+  const saveAll = async () => {
+    const token = getClientToken();
+    let created = 0;
+    let corrected = 0;
+    try {
+      for (let i = 0; i < docSlots.length; i++) {
+        const slot = docSlots[i];
+        const result = await ingestDocument({
+          client_token: token,
+          doc_class: slot.id,
+          canonical_json: getCanonicalJson(i),
+          source_name: slot.file?.name ?? slot.defaultFilename,
+        });
+        if (result.correction_session_id) corrected++;
+        else created++;
+      }
+      setSaveNotification(
+        `Zapisano wszystkie ${docSlots.length} dokumenty (nowe: ${created}, poprawki: ${corrected}).`
+      );
+    } catch {
+      setSaveNotification('Backend niedostępny — zmiany zostały w formularzu (demo działa dalej).');
+    }
+    setTimeout(() => setSaveNotification(null), 4000);
+  };
 
   return (
     <>
@@ -863,6 +924,14 @@ export default function App() {
                       title="Wyczyść wszystkie pola"
                     >
                       Wyczyść
+                    </button>
+                    <button
+                      type="button"
+                      className="gov-btn-secondary"
+                      onClick={loadFromBackend}
+                      title="Pobierz wyniki z bazy danych backendu"
+                    >
+                      Wczytaj z bazy
                     </button>
                     <button
                       type="button"
@@ -1588,14 +1657,28 @@ export default function App() {
 
                   {/* Dolny pasek akcji formularza */}
                   <div style={{ marginTop: '20px', paddingTop: '14px', borderTop: '1px solid var(--gov-border-light)', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <button type="button" className="gov-btn-process" onClick={handleSaveData}>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="16" height="16">
-                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-                        <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                        <polyline points="7 3 7 8 15 8"></polyline>
-                      </svg>
-                      <span>Zapisz</span>
-                    </button>
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                      <button type="button" className="gov-btn-process" onClick={handleSaveData}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="16" height="16">
+                          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                          <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                          <polyline points="7 3 7 8 15 8"></polyline>
+                        </svg>
+                        <span>Zapisz</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="gov-btn-secondary"
+                        onClick={saveAll}
+                        title="Zapisz odwołanie, pełnomocnictwo i przelew jednym kliknięciem"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="16" height="16">
+                          <polyline points="1 13 6 18 15 7"></polyline>
+                          <polyline points="9 13 14 18 23 7"></polyline>
+                        </svg>
+                        <span>Zapisz wszystko</span>
+                      </button>
+                    </div>
 
                     {currentDocIndex < docSlots.length - 1 ? (
                       <button type="button" className="gov-btn-primary" onClick={goToNextDoc} style={{ maxWidth: '200px' }}>
