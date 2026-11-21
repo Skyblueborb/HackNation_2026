@@ -62,6 +62,20 @@ def test_local_defaults_to_empty_transcription_prompt():
     assert app_module.PROMPT == ""
 
 
+def test_local_mlx_strips_think_preamble(monkeypatch):
+    seen = {}
+    install_fake_mlx(monkeypatch, seen)
+    monkeypatch.setattr(
+        app_module,
+        "generate",
+        lambda *a, **kw: SimpleNamespace(
+            text="<think>\nThe user wants transcription.\n</think>\nREAL OCR TEXT"
+        ),
+    )
+    result = app_module.MlxBackend().extract_page(Image.new("RGB", (8, 8)))
+    assert result == "REAL OCR TEXT"
+
+
 def test_local_mlx_extracts_text(monkeypatch):
     seen = {}
     install_fake_mlx(monkeypatch, seen)

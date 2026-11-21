@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import re
 import time
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
@@ -110,7 +111,8 @@ class MlxBackend:
             max_tokens=MAX_TOKENS,
             temperature=0.0,
         )
-        return str(getattr(result, "text", result)).strip()
+        text = str(getattr(result, "text", result)).strip()
+        return re.sub(r"^<think>.*?</think>\s*", "", text, flags=re.DOTALL).strip()
 
 
 def get_backend() -> MlxBackend:
