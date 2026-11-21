@@ -61,7 +61,12 @@ pdf                  pojedynczy plik PDF
 --out-dir KATALOG    gdzie zapisać JSON (domyślnie: output)
 --ocr-model ŚCIEŻKA  lokalne wagi MLX (domyślnie 0.8B)
 --llm-profile ID     klucz z configs/models.yaml (domyślnie local-llm)
+--save-ocr           zapisz surowy tekst OCR do <basename>.ocr.txt
 ```
+
+Flaga `--save-ocr` tworzy obok JSON-a plik `<basename>.ocr.txt` z sekcjami
+`--- page N ---`. Tekst stron jest zapisywany dosłownie, także pusty — służy
+do podglądu przy debugowaniu OCR. Działa też z `--remote`.
 
 Przykład z 4B:
 

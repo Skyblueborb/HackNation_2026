@@ -15,6 +15,17 @@ def test_write_result_uses_pdf_basename(tmp_path):
     assert json.loads(out.read_text()) == {"a": 1}
 
 
+def test_write_ocr_text_writes_pages_verbatim(tmp_path):
+    out = tmp_path / "nested" / "out"
+    path = tool.write_ocr_text(
+        tmp_path / "odwolanie.pdf", ["  strona 1  ", ""], out
+    )
+    assert path.name == "odwolanie.ocr.txt"
+    assert path.read_text(encoding="utf-8") == (
+        "--- page 1 ---\n\n  strona 1  \n\n--- page 2 ---\n\n"
+    )
+
+
 def test_check_servers_fails_clearly_when_llm_down(monkeypatch):
     monkeypatch.setattr(tool, "llm_health", lambda base_url: False)
     with pytest.raises(RuntimeError, match="local-llm"):
@@ -33,11 +44,18 @@ def test_run_remote_uses_api_response(monkeypatch, tmp_path):
     monkeypatch.setattr(
         tool,
         "post_analyze",
-        lambda **kw: {"canonical_json": {"ok": True}, "backend": "cuda", "pages": []},
+        lambda **kw: {
+            "canonical_json": {"ok": True},
+            "backend": "cuda",
+            "pages": [{"text": "A"}, {"text": "B"}],
+        },
     )
-    result, timings = tool.run_remote(pdf, "http://192.168.1.220:8000", "token")
+    result, timings, texts = tool.run_remote(
+        pdf, "http://192.168.1.220:8000", "token"
+    )
     assert result == {"ok": True}
     assert timings["total"] >= 0
+    assert texts == ["A", "B"]
 
 
 def test_run_document_returns_result_and_timings(monkeypatch):
@@ -54,9 +72,52 @@ def test_run_document_returns_result_and_timings(monkeypatch):
     monkeypatch.setattr(tool, "_load_backend", lambda: FakeBackend())
     monkeypatch.setattr(tool, "_load_processor", lambda: FakeProcessor())
 
-    result, timings = tool.run_document(b"%PDF", "odwolanie.pdf", "m")
+    result, timings, texts = tool.run_document(b"%PDF", "odwolanie.pdf", "m")
     assert result == {"ok": True}
     assert set(timings) == {"render", "ocr", "llm", "total"}
+    assert texts == ["OCR TEXT"]
+
+
+def test_main_saves_ocr_when_flag_set(monkeypatch, tmp_path):
+    pdf = tmp_path / "odwolanie.pdf"
+    pdf.write_bytes(b"%PDF")
+    out = tmp_path / "out"
+    monkeypatch.setattr(tool, "check_servers", lambda *a: "http://llm")
+    monkeypatch.setattr(tool, "backend_health", lambda: False)
+    monkeypatch.setattr(
+        tool,
+        "run_document",
+        lambda *a: ({"ok": 1}, {"render": 0.0, "ocr": 0.0, "llm": 0.0, "total": 0.0}, ["RAW"]),
+    )
+    monkeypatch.setattr(tool, "write_result", lambda *a: out / "odwolanie.json")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["ocr-pdf2json", str(pdf), "--out-dir", str(out), "--save-ocr"],
+    )
+    tool.main()
+    assert (out / "odwolanie.ocr.txt").read_text(encoding="utf-8") == (
+        "--- page 1 ---\n\nRAW\n\n"
+    )
+
+
+def test_main_without_flag_does_not_write_ocr(monkeypatch, tmp_path):
+    pdf = tmp_path / "odwolanie.pdf"
+    pdf.write_bytes(b"%PDF")
+    out = tmp_path / "out"
+    monkeypatch.setattr(tool, "check_servers", lambda *a: "http://llm")
+    monkeypatch.setattr(tool, "backend_health", lambda: False)
+    monkeypatch.setattr(
+        tool,
+        "run_document",
+        lambda *a: ({"ok": 1}, {"render": 0.0, "ocr": 0.0, "llm": 0.0, "total": 0.0}, ["RAW"]),
+    )
+    monkeypatch.setattr(tool, "write_result", lambda *a: out / "odwolanie.json")
+    monkeypatch.setattr(
+        sys, "argv", ["ocr-pdf2json", str(pdf), "--out-dir", str(out)]
+    )
+    tool.main()
+    assert not (out / "odwolanie.ocr.txt").exists()
 
 
 class _FakeResponse:

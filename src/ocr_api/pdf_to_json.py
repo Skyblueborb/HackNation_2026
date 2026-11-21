@@ -109,7 +109,7 @@ def run_document(
         "ocr": t2 - t1,
         "llm": t3 - t2,
         "total": t3 - t0,
-    }
+    }, texts
 
 
 def doc_class_from_filename(pdf: Path) -> str:
@@ -178,13 +178,26 @@ def run_remote(
         canonical = {
             "raw_text": "\n\n".join(page.get("text", "") for page in pages)
         }
-    return canonical, {"total": elapsed}
+    texts = [page.get("text", "") for page in response.get("pages", [])]
+    return canonical, {"total": elapsed}, texts
 
 
 def write_result(pdf: Path, result: dict[str, Any], out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{pdf.stem}.json"
     path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
+def write_ocr_text(pdf: Path, texts: list[str], out_dir: Path) -> Path:
+    """Save raw per-page OCR text for visual debugging."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"{pdf.stem}.ocr.txt"
+    body = "".join(
+        f"--- page {number} ---\n\n{text}" + ("\n\n" if text else "")
+        for number, text in enumerate(texts, 1)
+    )
+    path.write_text(body, encoding="utf-8")
     return path
 
 
@@ -212,19 +225,27 @@ def main() -> None:
         help="X-API-Token for the remote backend",
     )
     parser.add_argument("--doc-class", help="override document class for --remote")
+    parser.add_argument(
+        "--save-ocr",
+        action="store_true",
+        help="save raw per-page OCR text to <basename>.ocr.txt",
+    )
     args = parser.parse_args()
 
     if not args.pdf.is_file():
         raise SystemExit(f"PDF not found: {args.pdf}")
 
     if args.remote:
-        result, timings = run_remote(
+        result, timings, texts = run_remote(
             args.pdf,
             args.remote,
             args.api_token,
             doc_class=args.doc_class,
         )
         out = write_result(args.pdf, result, args.out_dir)
+        if args.save_ocr:
+            ocr_out = write_ocr_text(args.pdf, texts, args.out_dir)
+            print(f"wrote {ocr_out}")
         print(f"[ok] remote backend: {args.remote}")
         print(f"total={timings['total']:.2f}s")
         print(f"wrote {out}")
@@ -239,10 +260,13 @@ def main() -> None:
     print(f"[ok] OCR weights: {args.ocr_model}")
     print(f"[i] backend API: {'running' if backend_health() else 'not needed/stopped'}")
 
-    result, timings = run_document(
+    result, timings, texts = run_document(
         args.pdf.read_bytes(), args.pdf.name, args.ocr_model
     )
     out = write_result(args.pdf, result, args.out_dir)
+    if args.save_ocr:
+        ocr_out = write_ocr_text(args.pdf, texts, args.out_dir)
+        print(f"wrote {ocr_out}")
 
     print(
         f"render={timings['render']:.2f}s ocr={timings['ocr']:.2f}s "
