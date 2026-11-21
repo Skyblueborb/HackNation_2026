@@ -1,25 +1,18 @@
 {
-	"step0": {
-		"valid": true
-	},
+  "_comment": "Przykładowy output pipeline'u — błąd na etapie renderowania (step1).",
 
-	"step1": {
-		"pageCount": 13
-	},
+  "ok": false,
 
-	"step2": {
-		"pagesRotation": [ 0.12, 1.1, 0.0, 0.0, 3.14 ]
-	},
+  "step0": { "valid": true },
+  "step1": { "pageCount": 0 },
+  "step2": { "pagesRotation": [] },
+  "step3": { "textLength": 0 },
+  "step4": null,
 
-	"step3": {},
-
-	"step4": {
-		"rodzaj": "przelew",
-		"json": {},
-		"unsureFields": [ "numer_transakcji", "tytul" ]
-	},
-
-	"error": {
-		"atStep": "renderowanie"
-	}
+  "error": {
+    "atStep":  1,
+    "code":    "RENDER_FAILED",
+    "message": "PDF rendering failed.",
+    "detail":  { "exception": "PdfiumError: document is damaged" }
+  }
 }
