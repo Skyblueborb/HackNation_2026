@@ -82,6 +82,34 @@ def install_fake_cuda(monkeypatch):
     return calls
 
 
+def test_warmup_runs_one_token_generation(monkeypatch):
+    calls = {}
+
+    class FakeIds:
+        @property
+        def shape(self):
+            return (1, 1)
+
+    class FakeProcessor:
+        def apply_chat_template(self, conversation, **kwargs):
+            calls["template"] = kwargs
+            return SimpleNamespace(to=lambda device: {"input_ids": FakeIds()})
+
+    class FakeModel:
+        def generate(self, **kwargs):
+            calls["generate"] = kwargs
+            return object()
+
+    monkeypatch.setattr(backends, "cuda_session", lambda: (FakeModel(), FakeProcessor()))
+    monkeypatch.setattr(
+        backends,
+        "torch",
+        SimpleNamespace(inference_mode=contextlib.nullcontext),
+    )
+    backends.warmup()
+    assert calls["generate"]["max_new_tokens"] == 1
+
+
 def test_cuda_default_model_is_08b(monkeypatch):
     monkeypatch.delenv("OCR_MODEL", raising=False)
     import importlib

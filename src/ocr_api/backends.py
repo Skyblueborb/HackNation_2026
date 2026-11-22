@@ -56,6 +56,30 @@ def cuda_session():
     return _session
 
 
+def warmup() -> None:
+    """Trigger CUDA/Triton kernel compilation before the first real request."""
+    model, processor = cuda_session()
+    image = Image.new("RGB", (64, 64), "white")
+    conversation = [
+        {
+            "role": "user",
+            "content": [{"type": "image", "image": image}],
+        }
+    ]
+    started = time.perf_counter()
+    inputs = processor.apply_chat_template(
+        conversation,
+        add_generation_prompt=True,
+        tokenize=True,
+        return_dict=True,
+        return_tensors="pt",
+        enable_thinking=False,
+    ).to("cuda")
+    with torch.inference_mode():
+        model.generate(**inputs, max_new_tokens=1, do_sample=False)
+    logger.info("cuda warmup done in %.2fs", time.perf_counter() - started)
+
+
 class CudaBackend:
     def extract_page(self, image: Image.Image) -> str:
         model, processor = cuda_session()

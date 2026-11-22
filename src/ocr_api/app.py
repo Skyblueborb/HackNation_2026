@@ -16,7 +16,7 @@ from ocr_common import (
     verify_key,
 )
 from ocr_common.common import get_api_key, logger
-from ocr_api.backends import ATTN_IMPL, CudaBackend, MODEL_ID, cuda_session
+from ocr_api.backends import ATTN_IMPL, CudaBackend, MODEL_ID, cuda_session, warmup
 
 
 def validate_startup() -> None:
@@ -53,6 +53,7 @@ async def lifespan(_app: FastAPI):
         started = time.perf_counter()
         logger.info("loading CUDA model ...")
         await asyncio.to_thread(cuda_session)
+        await asyncio.to_thread(warmup)
         logger.info("model ready in %.1fs", time.perf_counter() - started)
     yield
     logger.info("shutting down")
