@@ -2,6 +2,8 @@ import contextlib
 import io
 from types import SimpleNamespace
 
+import httpx
+
 from fastapi.testclient import TestClient
 from PIL import Image
 
@@ -80,6 +82,41 @@ def install_fake_cuda(monkeypatch):
     monkeypatch.setattr(backends, "AutoProcessor", ProcessorClass)
     monkeypatch.setattr(backends, "_session", None)
     return calls
+
+
+def test_llamacpp_backend_posts_image_and_strips_think(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": "<think>internal</think>\nREAL OCR TEXT"
+                        }
+                    }
+                ]
+            }
+
+    def fake_post(self, url, **kwargs):
+        captured.update(url=url, **kwargs)
+        return FakeResponse()
+
+    monkeypatch.setenv("OCR_CPP_URL", "http://127.0.0.1:8083/v1")
+    monkeypatch.setenv("OCR_CPP_MODEL", "LightOnOCR-3-0.8B-Q4_K_M")
+    monkeypatch.setattr(httpx.Client, "post", fake_post)
+
+    backend = backends.LlamaCppBackend()
+    text = backend.extract_page(Image.new("RGB", (8, 8), "white"))
+
+    assert captured["url"] == "http://127.0.0.1:8083/v1/chat/completions"
+    assert captured["json"]["model"] == "LightOnOCR-3-0.8B-Q4_K_M"
+    assert captured["json"]["messages"][0]["content"][0]["type"] == "image_url"
+    assert text == "REAL OCR TEXT"
 
 
 def test_warmup_runs_one_token_generation(monkeypatch):

@@ -11,12 +11,31 @@ cd "$(dirname "$0")/.."
 uv run lab serve --model qwen3-8b-l4 &
 LLM_PID=$!
 
+if [[ ! -f models/llamacpp/LightOnOCR-3-0.8B.Q4_K_M.gguf \
+   || ! -f models/llamacpp/LightOnOCR-3-0.8B.mmproj-q8_0.gguf ]]; then
+  bash scripts/download-ocr-llamacpp.sh
+fi
+
+bash scripts/start-ocr-llamacpp.sh &
+OCR_CPP_PID=$!
+for ((i = 0; i < 300; i++)); do
+  curl -fsS -o /dev/null http://127.0.0.1:8083/health && break
+  sleep 2
+done
+curl -fsS -o /dev/null http://127.0.0.1:8083/health || {
+  echo "ERROR: llama.cpp OCR server did not start" >&2
+  exit 1
+}
+
 source .env
 : "${API_KEY:?API_KEY must be set in .env on the GPU box}"
 
 BACKEND_TOKEN="$(openssl rand -hex 32)"
 
 OCR_MODEL="${OCR_MODEL:-lightonai/LightOnOCR-3-0.8B}" \
+OCR_CPP_BACKEND=1 \
+OCR_CPP_URL=http://127.0.0.1:8083/v1 \
+OCR_CPP_MODEL=LightOnOCR-3-0.8B-Q4_K_M \
 OCR_FORCE_IMAGE="${OCR_FORCE_IMAGE:-1}" \
 OCR_DESKEW="${OCR_DESKEW:-0}" \
 OCR_MAX_EDGE="${OCR_MAX_EDGE:-1536}" \
@@ -25,7 +44,7 @@ OCR_LLM_MODEL=qwen3-8b-l4 \
 uv run --extra gpu --extra serve ocr-api serve --host 0.0.0.0 --port 8000 &
 OCR_PID=$!
 
-trap 'kill "$LLM_PID" "$OCR_PID" 2>/dev/null || true' EXIT INT TERM
+trap 'kill "$LLM_PID" "$OCR_CPP_PID" "$OCR_PID" 2>/dev/null || true' EXIT INT TERM
 
 until curl -fsS -o /dev/null http://localhost:8000/health; do sleep 2; done
 IP="$(curl -4 -fsS https://api.ipify.org 2>/dev/null \

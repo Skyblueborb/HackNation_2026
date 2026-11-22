@@ -98,9 +98,21 @@ bash scripts/gpu-server-bootstrap.sh
 
 Skrypt startuje `lab serve --model qwen3-8b-l4` (port 8082, tylko localhost)
 i `ocr-api serve --host 0.0.0.0 --port 8000` (OCR obrazowy, model
-`lightonai/LightOnOCR-3-0.8B` na CUDA), czeka aż `/health` odpowie, wykrywa
+`lightonai/LightOnOCR-3-0.8B` przez **llama.cpp multimodal na CUDA** na porcie 8083,
+czeka aż `/health` odpowie, wykrywa
 publiczny adres **IPv4** (`curl -4`) i na końcu drukuje gotowe komendy do
 wklejenia na klienta. Endpoint jest zawsze `http://`, nigdy `https://`.
+
+Po raz pierwszy bootstrap pobiera GGUF i mmproj przez
+`scripts/download-ocr-llamacpp.sh`:
+
+```text
+models/llamacpp/LightOnOCR-3-0.8B.Q4_K_M.gguf
+models/llamacpp/LightOnOCR-3-0.8B.mmproj-q8_0.gguf
+```
+
+Serwer OCR działa na `127.0.0.1:8083`, a `ocr-api` używa go przez
+`OCR_CPP_BACKEND=1`. To szybka ścieżka C++ — nie transformers eager generate.
 
 Bootstrap ustawia `OCR_FORCE_IMAGE=1`, więc OCR zawsze renderuje stronę do
 obrazu i używa modelu CUDA — nawet gdy PDF ma warstwę tekstową. Aby przywrócić

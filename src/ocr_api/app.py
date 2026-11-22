@@ -16,7 +16,14 @@ from ocr_common import (
     verify_key,
 )
 from ocr_common.common import get_api_key, logger
-from ocr_api.backends import ATTN_IMPL, CudaBackend, MODEL_ID, cuda_session, warmup
+from ocr_api.backends import (
+    ATTN_IMPL,
+    CudaBackend,
+    LlamaCppBackend,
+    MODEL_ID,
+    cuda_session,
+    warmup,
+)
 
 
 def validate_startup() -> None:
@@ -28,7 +35,8 @@ def validate_startup() -> None:
         validate_model()
 
 
-PRELOAD = os.environ.get("OCR_PRELOAD", "1") == "1"
+OCR_CPP_BACKEND = os.environ.get("OCR_CPP_BACKEND", "0") == "1"
+PRELOAD = os.environ.get("OCR_PRELOAD", "1") == "1" and not OCR_CPP_BACKEND
 MAX_UPLOAD_BYTES = int(os.environ.get("OCR_MAX_UPLOAD_BYTES", str(50 * 1024 * 1024)))
 # Resolving this returns a proxy; the real processor is built in lifespan.
 PROCESSOR = load_llm_processor(os.environ.get("OCR_LLM_PROCESSOR"))
@@ -43,7 +51,8 @@ async def lifespan(_app: FastAPI):
 
         get_processor()
     logger.info(
-        "starting: backend=cuda model=%s dtype=bf16 attn=%s preload=%s llm=%s",
+        "starting: backend=%s model=%s dtype=bf16 attn=%s preload=%s llm=%s",
+        "llamacpp" if OCR_CPP_BACKEND else "cuda",
         MODEL_ID,
         ATTN_IMPL,
         PRELOAD,
@@ -63,10 +72,10 @@ app = FastAPI(title="OCR LLM API (CUDA)", lifespan=lifespan)
 _backend = None
 
 
-def get_backend() -> CudaBackend:
+def get_backend() -> CudaBackend | LlamaCppBackend:
     global _backend
     if _backend is None:
-        _backend = CudaBackend()
+        _backend = LlamaCppBackend() if OCR_CPP_BACKEND else CudaBackend()
     return _backend
 
 

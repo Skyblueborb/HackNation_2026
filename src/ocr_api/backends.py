@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import base64
+import io
 import os
+import re
 import time
+from typing import Any
 
 from PIL import Image
 
@@ -114,3 +118,48 @@ class CudaBackend:
             len(text),
         )
         return text
+
+
+class LlamaCppBackend:
+    """OCR through llama.cpp multimodal server with CUDA."""
+
+    def __init__(self) -> None:
+        import httpx
+
+        self.url = os.environ.get("OCR_CPP_URL", "http://127.0.0.1:8083/v1")
+        self.model = os.environ.get("OCR_CPP_MODEL", "LightOnOCR-3-0.8B-Q4_K_M")
+        self.timeout = float(os.environ.get("OCR_CPP_TIMEOUT", "900"))
+        self.client = httpx.Client(timeout=self.timeout)
+
+    def extract_page(self, image: Image.Image) -> str:
+        import httpx
+
+        buf = io.BytesIO()
+        image.save(buf, format="PNG")
+        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        content: list[dict[str, Any]] = [
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{b64}"},
+            }
+        ]
+        if PROMPT:
+            content.append({"type": "text", "text": PROMPT})
+        try:
+            response = self.client.post(
+                f"{self.url.rstrip('/')}/chat/completions",
+                json={
+                    "model": self.model,
+                    "messages": [{"role": "user", "content": content}],
+                    "temperature": 0,
+                    "max_tokens": MAX_TOKENS,
+                    "stream": False,
+                },
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"llama.cpp OCR server error: {exc}") from exc
+        payload = response.json()
+        text = payload["choices"][0]["message"]["content"] or ""
+        text = re.sub(r"^<think>.*?</think>\s*", "", str(text).strip(), flags=re.DOTALL)
+        return text.strip()
