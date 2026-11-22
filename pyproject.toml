@@ -18,6 +18,7 @@ dependencies = [
     # Document routing vectorises text with numpy, so the serve path needs it
     # too -- not just the `lab` extra.
     "numpy>=2.1",
+    "pytesseract",
 ]
 
 [project.optional-dependencies]
