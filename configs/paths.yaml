@@ -1,6 +1,6 @@
 # Katalog NADEX 'dane/' (kod szuka <data_root>/dane/przyklad_*).
-# W tym środowisku dane konkursowe leżą w ../dane/hacknation-2026/dane
-# (repo klonu organizatora "hacknation-2026" jest zagnieżdżone w ../dane).
-# Na innej maszynie ustaw O2J_DATA_ROOT lub zmień tę ścieżkę.
-data_root: ../dane/hacknation-2026
+# Zwendorowane lokalnie w data/dane, z poprawionym prefiksem kraju (PL) w
+# na_rachunek/z_rachunku tam, gdzie faktycznie występuje w źródłowym PDF
+# (organizator miał go ucięty). Na innej maszynie ustaw O2J_DATA_ROOT.
+data_root: data
 work_root: work
