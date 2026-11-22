@@ -76,6 +76,12 @@ def test_name_is_text():
     assert v.name("  Jan   Kowalski ") == "Jan Kowalski"
 
 
+def test_name_strips_leading_professional_titles():
+    assert v.name("adw. Piotr Zalewski") == "Piotr Zalewski"
+    assert v.name("r. pr. Jan Kowalski") == "Jan Kowalski"
+    assert v.name("radca prawny Anna Nowak") == "Anna Nowak"
+
+
 def test_enum_int():
     assert v.enum_int(9) == 9
     assert v.enum_int("9") == 9

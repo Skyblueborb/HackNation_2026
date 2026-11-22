@@ -35,6 +35,10 @@ def test_odwolanie_prompt_separates_header_and_action_dates() -> None:
         "Adres Prezesa KIO",
         "unieważnił",
         "kancelarii",
+        "numer referencyjny",
+        "Nie przepisuj NIP ani REGON",
+        "Nie składaj miejscowości",
+        "późniejszych",
     ):
         assert phrase in template
 

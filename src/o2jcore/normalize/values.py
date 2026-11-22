@@ -95,8 +95,17 @@ def text(v: Any) -> str | None:
     return s or None
 
 
+_TITLE_RE = re.compile(
+    r"^(?:(?:r\.\s*pr\.|radca\s+prawny|adw\.|mec\.|mgr|dr)\.?\s*)+",
+    re.IGNORECASE,
+)
+
+
 def name(v: Any) -> str | None:
-    return text(v)
+    s = text(v)
+    if s is None:
+        return None
+    return _TITLE_RE.sub("", s).strip() or None
 
 
 def enum_int(v: Any) -> int | None:
