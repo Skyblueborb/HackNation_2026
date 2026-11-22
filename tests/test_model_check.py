@@ -92,6 +92,40 @@ def test_select_documents_accepts_pdf_with_sidecar_gold(tmp_path):
     assert cases[0].corpus == "local"
 
 
+def test_select_documents_accepts_empty_sidecar_as_reject(tmp_path):
+    root = _make_data_root(tmp_path, n_sets=1)
+    outside = tmp_path / "rejects"
+    outside.mkdir()
+    pdf = outside / "reject.pdf"
+    pdf.write_bytes(_pdf_bytes())
+    pdf.with_suffix(".json").write_text("[]", encoding="utf-8")
+    case = mc.select_documents(
+        root, corpus="przyklad", count=5, random_sample=False, seed=42,
+        sets=None, pdf_paths=[pdf],
+    )[0]
+    assert case.class_id == "nieznany"
+    assert case.gold_stem == "rejected"
+
+
+def test_score_combo_scores_reject_case(tmp_path):
+    root = _make_data_root(tmp_path, n_sets=1)
+    outside = tmp_path / "rejects2"
+    outside.mkdir()
+    pdf = outside / "reject2.pdf"
+    pdf.write_bytes(_pdf_bytes())
+    pdf.with_suffix(".json").write_text("[]", encoding="utf-8")
+    case = mc.select_documents(
+        root, corpus="przyklad", count=5, random_sample=False, seed=42,
+        sets=None, pdf_paths=[pdf],
+    )[0]
+    combo = tmp_path / "combo"
+    pred_dir = combo / "predictions" / case.set_id
+    pred_dir.mkdir(parents=True)
+    (pred_dir / "rejected.json").write_text("{}", encoding="utf-8")
+    out = mc.score_combo([case], combo, mc._specs_with_reject(), [case.set_id])
+    assert out["n_files_evaluated"] == 1
+
+
 def test_score_combo_scores_sidecar_case_with_expected_gold_stem(tmp_path):
     root = _make_data_root(tmp_path, n_sets=1)
     outside = tmp_path / "outside2"

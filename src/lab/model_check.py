@@ -58,8 +58,21 @@ class DocumentCase:
     gold_stem: str = ""
 
 
+@dataclass(frozen=True)
+class _RejectSpec:
+    id: str = "nieznany"
+    gold_stem: str = "rejected"
+    fields: tuple[Any, ...] = ()
+
+
 def _specs() -> dict[str, Any]:
     return load_all_classes(paths.configs_root() / "classes")
+
+
+def _specs_with_reject() -> dict[str, Any]:
+    specs = dict(_specs())
+    specs["nieznany"] = _RejectSpec()
+    return specs
 
 
 def discover_sets(data_root: Path, corpus: str) -> list[str]:
@@ -102,6 +115,18 @@ def _case_from_sidecar(pdf: Path) -> DocumentCase:
         payload = json.loads(gold.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise ValueError(f"sidecar gold is not valid JSON: {gold}") from exc
+    if isinstance(payload, list) and not payload:
+        return DocumentCase(
+            set_id=f"local_{pdf.stem}",
+            pdf=pdf,
+            gold=gold,
+            class_id="nieznany",
+            corpus="local",
+            has_text_layer=any(
+                page.text.strip() for page in extract_pages(pdf, "pdfplumber")
+            ),
+            gold_stem="rejected",
+        )
     class_id = next(
         (cid for key, cid in _GOLD_KEY_TO_CLASS.items() if key in payload),
         None,
@@ -747,7 +772,7 @@ def execute_model_check(options: dict[str, Any]) -> Path:
     (run_dir / "config.json").write_text(
         json.dumps(_jsonable(options), ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    specs = _specs()
+    specs = _specs_with_reject()
     results: list[dict[str, Any]] = []
     combos: list[tuple[str, str, str | None]] = []
     for analysis_name in analyses:
