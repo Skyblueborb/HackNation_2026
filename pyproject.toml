@@ -23,7 +23,13 @@ dependencies = [
 
 [project.optional-dependencies]
 serve = ["fastapi", "uvicorn", "python-multipart", "httpx"]
-gpu = ["torch", "torchvision", "transformers>=5.5.4"]
+gpu = [
+    "torch==2.14.1",
+    "torchvision==0.29.1",
+    "transformers>=5.5.4",
+    "causal-conv1d==1.7.0",
+    "flash-linear-attention",
+]
 local = ["mlx-vlm"]
 lab = [
     "jiwer",
@@ -56,6 +62,23 @@ packages = ["src/o2jcore", "src/lab", "src/ocr_common", "src/ocr_api", "src/loca
 
 [tool.uv]
 package = true
+
+# CUDA 13.2 wheels for the L4 production box. Explicit indexes are used only
+# for the packages listed in tool.uv.sources.
+[[tool.uv.index]]
+name = "pytorch-cu132"
+url = "https://download.pytorch.org/whl/cu132"
+explicit = true
+
+[[tool.uv.index]]
+name = "astral-cu132"
+url = "https://wheels.astral.sh/simple/cu132/"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu132" }]
+torchvision = [{ index = "pytorch-cu132" }]
+causal-conv1d = [{ index = "astral-cu132" }]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

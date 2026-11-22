@@ -120,14 +120,21 @@ OCR_MAX_EDGE=1536   # mniejszy obraz wejściowy niż 2048
 Można je nadpisać env. `OCR_DESKEW=0` nie wyłącza OCR — wyłącza tylko korektę
 rotacji. Właściwy model LightOnOCR nadal działa na obrazie.
 
-Zoptymalizowane kernele Qwen3.5 instaluje:
+Zoptymalizowane kernele Qwen3.5 są przypięte w `pyproject.toml` i `uv.lock`:
+
+- `torch==2.14.1` z indeksu PyTorch `cu132`,
+- `torchvision==0.29.1` z indeksu PyTorch `cu132`,
+- `causal-conv1d==1.7.0+cu.13.2.torch.2.14` z Astral `cu132`,
+- `flash-linear-attention` z PyPI.
+
+Nie ma source-buildu. Instalacja na L4:
 
 ```bash
-sudo bash scripts/gpu-install-kernels.sh
+cd ~/HackNation_2026
+bash scripts/gpu-install-kernels.sh
 ```
 
-Skrypt naprawia konflikt źródeł CUDA w apt, instaluje CUDA 13.2, potem
-przebudowuje `causal-conv1d` i `flash-linear-attention` pod CUDA torch 13.2.
+Skrypt robi `uv sync --frozen --extra gpu --extra serve` i weryfikuje importy.
 Po instalacji zrestartuj stos GPU.
 
 ```
