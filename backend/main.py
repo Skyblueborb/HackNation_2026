@@ -111,6 +111,12 @@ async def _run_remote_ocr(data: bytes, filename: str | None) -> dict:
             timeout=timeout,
         )
         response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        body = exc.response.text[:500] if exc.response is not None else ""
+        raise HTTPException(
+            status_code=502,
+            detail=f"OCR service returned {exc.response.status_code}: {body}",
+        ) from exc
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"OCR service error: {exc}") from exc
     return response.json()

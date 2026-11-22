@@ -77,6 +77,22 @@ def test_run_remote_ocr_posts_pdf_with_api_key(monkeypatch):
     assert captured["files"]["file"][0] == "scan.pdf"
 
 
+def test_run_remote_ocr_reports_remote_error_body(monkeypatch):
+    request = httpx.Request("POST", "http://l4:8000/analyze")
+    response = httpx.Response(500, text="CUDA init failed", request=request)
+
+    def fake_post(url, **kwargs):
+        return response
+
+    monkeypatch.setenv("OCR_SERVICE_URL", "http://l4:8000")
+    monkeypatch.setattr(httpx, "post", fake_post)
+    with pytest.raises(main.HTTPException) as exc:
+        asyncio.run(main._run_remote_ocr(b"%PDF", "scan.pdf"))
+    assert exc.value.status_code == 502
+    assert "500" in str(exc.value.detail)
+    assert "CUDA init failed" in str(exc.value.detail)
+
+
 def test_run_remote_ocr_requires_service_url(monkeypatch):
     monkeypatch.delenv("OCR_SERVICE_URL", raising=False)
     with pytest.raises(RuntimeError, match="OCR_SERVICE_URL"):
