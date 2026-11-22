@@ -1,33 +1,21 @@
 import { useState, useRef, useEffect } from 'react';
-import type { ExtractedFile } from './utils/zip';
-import { createZipArchive, type ZipFileInput } from './utils/zipWriter';
+import { extractZipFiles, MAX_ZIP_BYTES, type ExtractedFile } from './utils/zip';
 import { analyzeDocument, ingestDocument, listDocuments, getClientToken } from './api';
 import { hydrateForms } from './hydrate';
 import {
   type DocClass,
-  type FormBundle,
+  type DocumentSlot,
+  type OdwolanieFormData,
+  type PelnomocnictwoFormData,
+  type PrzelewFormData,
   emptyForms,
+  makeDoc,
+  defaultDocs,
   classifyName,
   classFromLlm,
-  CLASS_LABEL,
+  renumberTitles,
   buildCanonical,
 } from './logic';
-
-export type ExtendedDocClass = DocClass | 'nierozpoznany';
-
-export interface DocumentSlot {
-  id: string; // unikalny identyfikator dokumentu (client_doc_id)
-  doc_class: ExtendedDocClass;
-  title: string;
-  categoryLabel: string;
-  defaultFilename: string;
-  sourceName: string;
-  folderName?: string;
-  relativePath?: string;
-  file?: ExtractedFile;
-  data: FormBundle;
-  confidence?: number | null;
-}
 
 const CZYNNOSC_POWODY = [
   { id: '', label: '-wybierz-' },
@@ -42,77 +30,118 @@ const CZYNNOSC_POWODY = [
   { id: '9', label: '9 - Decyzja o unieważnieniu postępowania' },
   { id: '10', label: '10 - Zaniechanie unieważnienia postępowania' },
   { id: '11', label: '11 - Opis przedmiotu zamówienia (OPZ)' },
-  { id: '12', label: '12 - Projektowane postanowienia umowy' },
+  { id: '12', label: '12 - Projektowane postanowienia umowy'}
 ];
 
 export default function App() {
   const [stage, setStage] = useState<'upload' | 'loading' | 'splitscreen' | 'done'>('upload');
-  const [selectedFolder, setSelectedFolder] = useState<{ name: string; files: File[] } | null>(null);
+  const [selectedZip, setSelectedZip] = useState<File | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [analyzingProgress, setAnalyzingProgress] = useState<{ current: number; total: number; currentFile: string } | null>(null);
-  const folderInputRef = useRef<HTMLInputElement>(null);
+
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingStep, setLoadingStep] = useState(1);
 
   const [currentDocIndex, setCurrentDocIndex] = useState(0);
-  const [docSlots, setDocSlots] = useState<DocumentSlot[]>([
-    {
-      id: 'doc-1',
-      doc_class: 'odwolanie',
-      title: 'Odwołanie do KIO',
-      categoryLabel: 'Odwołanie',
-      defaultFilename: 'odwolanie.pdf',
-      sourceName: 'odwolanie.pdf',
-      folderName: 'Sprawa',
-      data: emptyForms(),
+  const [docSlots, setDocSlots] = useState<DocumentSlot[]>(defaultDocs);
+
+  // Formularze – domyślnie puste, gotowe do wpisywania i poprawy
+  const [odwolanieData, setOdwolanieData] = useState<OdwolanieFormData>({
+    OdwolanieKIO: {
+      data: '',
+      czynnosc_dzien: '',
+      czynnosc_powod_id: '',
+      czynnosc_opis: '',
+      miejscowosc: '',
     },
-    {
-      id: 'doc-2',
-      doc_class: 'pelnomocnictwo',
-      title: 'Pełnomocnictwo',
-      categoryLabel: 'Pełnomocnictwo',
-      defaultFilename: 'pelnomocnictwo.pdf',
-      sourceName: 'pelnomocnictwo.pdf',
-      folderName: 'Sprawa',
-      data: emptyForms(),
+    Odwolujacy: {
+      krs: '',
+      nazwa: '',
+      nip: '',
+      regon: '',
+      przez_pelnomocnika: '1',
+      pelnomocnik_imie_nazwisko: '',
+      pelnomocnik_nazwa: '',
+      pelnomocnik_mail: '',
     },
-    {
-      id: 'doc-3',
-      doc_class: 'przelew',
-      title: 'Potwierdzenie przelewu',
-      categoryLabel: 'Przelew',
-      defaultFilename: 'przelew.pdf',
-      sourceName: 'przelew.pdf',
-      folderName: 'Sprawa',
-      data: emptyForms(),
+    Zamawiajacy: {
+      krs: '',
+      nazwa: '',
+      nip: '',
+      regon: '',
+      prowadzacy_postepowanie: 'null',
     },
-  ]);
+    ZamowieniePubliczne: {
+      numer_bzp: '',
+      numer_postepowania: '',
+      numer_ted: '',
+      tytul: '',
+    },
+  });
+
+  const [pelnomocnictwoData, setPelnomocnictwoData] = useState<PelnomocnictwoFormData>({
+    mocodawca: {
+      imie_nazwisko: '',
+      krs: '',
+      nazwa: '',
+      nip: '',
+      typ: 'osoba_prawna',
+      podpisujacy_imie_nazwisko: '',
+    },
+    pelnomocnicy: {
+      imie_nazwisko: '',
+      pesel: '',
+    },
+  });
+
+  const [przelewData, setPrzelewData] = useState<PrzelewFormData>({
+    przelew_bankowy: {
+      data_operacji: '',
+      kwota: '',
+      na_rachunek: '60 1010 1010 0081 3622 3100 0000',
+      numer_transakcji: '',
+      tytul: '',
+      z_rachunku: '',
+    },
+  });
 
   const [saveNotification, setSaveNotification] = useState<string | null>(null);
   const [showJsonModal, setShowJsonModal] = useState(false);
 
-  const tabsScrollRef = useRef<HTMLDivElement>(null);
-  const tabButtonRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [highContrast, setHighContrast] = useState(false);
 
-  const activeDoc = docSlots[currentDocIndex] || docSlots[0];
+  // Object URL-e PDF-ów zwalniamy przy każdej zamianie dokumentów i wyjściu do menu.
+  const revokeSlotUrls = (slots: DocumentSlot[]) => {
+    slots.forEach((s) => { if (s.file?.url) URL.revokeObjectURL(s.file.url); });
+  };
 
+  // Modal: Escape zamyka, focus wraca do elementu, który go otworzył.
   useEffect(() => {
-    const activeBtn = tabButtonRefs.current[currentDocIndex];
-    if (activeBtn) {
-      activeBtn.scrollIntoView({
-        behavior: 'smooth',
-        inline: 'nearest',
-        block: 'nearest',
-      });
-    }
-  }, [currentDocIndex]);
+    if (!showJsonModal) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowJsonModal(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      previous?.focus();
+    };
+  }, [showJsonModal]);
 
-  const scrollTabs = (direction: 'left' | 'right') => {
-    if (tabsScrollRef.current) {
-      tabsScrollRef.current.scrollBy({
-        left: direction === 'left' ? -220 : 220,
-        behavior: 'smooth',
-      });
+  const toggleContrast = () => {
+    const next = !highContrast;
+    setHighContrast(next);
+    if (next) {
+      document.body.classList.add('high-contrast');
+    } else {
+      document.body.classList.remove('high-contrast');
     }
+  };
+
+  const setFontSize = (scale: number) => {
+    document.documentElement.style.setProperty('--base-font-size', `${scale}px`);
   };
 
   const formatFileSize = (bytes: number) => {
@@ -122,14 +151,10 @@ export default function App() {
     return (bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 2) + ' ' + units[i];
   };
 
-  // Wypełnienie przykładowymi danymi testowymi
+  // Wypełnienie przykładowymi danymi ze screenshotów z oczekiwane-json
   const fillSampleGoldData = () => {
-    if (!activeDoc) return;
-    const newSlots = [...docSlots];
-    const currentData = { ...activeDoc.data };
-
     if (activeDoc.doc_class === 'odwolanie') {
-      currentData.odwolanie = {
+      setOdwolanieData({
         OdwolanieKIO: {
           data: '13.10.2025',
           czynnosc_dzien: '01.10.2025',
@@ -160,9 +185,9 @@ export default function App() {
           numer_ted: '641651-2025',
           tytul: 'Wykonanie robót budowlanych oraz dostawa i montaż wyposażenia w ramach zadania, polegającego na przebudowie i rozbudowie Filharmonii Pomorskiej w Bydgoszczy',
         },
-      };
+      });
     } else if (activeDoc.doc_class === 'pelnomocnictwo') {
-      currentData.pelnomocnictwo = {
+      setPelnomocnictwoData({
         mocodawca: {
           typ: 'osoba_prawna',
           nazwa: 'FAMBUD',
@@ -175,9 +200,9 @@ export default function App() {
           imie_nazwisko: 'Krystyna Mazowiecka',
           pesel: '85120133547',
         },
-      };
-    } else if (activeDoc.doc_class === 'przelew') {
-      currentData.przelew = {
+      });
+    } else {
+      setPrzelewData({
         przelew_bankowy: {
           data_operacji: '09.10.2025',
           kwota: '10000.00',
@@ -186,46 +211,64 @@ export default function App() {
           tytul: 'WPIS OD ODW., ZAM: ZESPÓŁ SZKÓŁ CENTRUM KSZTAŁCENIA ROLNICZEGO IM. KEN W HENRYKOWIE, ZSCKR/822/2025, BUDOWA DR. POŻAR.',
           z_rachunku: '50 8020 5460 0000 5888 7442 44',
         },
-      };
+      });
     }
-
-    newSlots[currentDocIndex] = { ...activeDoc, data: currentData };
-    setDocSlots(newSlots);
-    setSaveNotification(`Wstawiono dane dla: ${activeDoc.title}`);
+    setSaveNotification(`Wstawiono dane dla: ${docSlots[currentDocIndex].title}`);
     setTimeout(() => setSaveNotification(null), 3000);
   };
 
   const clearCurrentData = () => {
-    if (!activeDoc) return;
-    const newSlots = [...docSlots];
-    const currentData = { ...activeDoc.data };
     if (activeDoc.doc_class === 'odwolanie') {
-      currentData.odwolanie = emptyForms().odwolanie;
+      setOdwolanieData({
+        OdwolanieKIO: { data: '', czynnosc_dzien: '', czynnosc_powod_id: '', czynnosc_opis: '', miejscowosc: '' },
+        Odwolujacy: { krs: '', nazwa: '', nip: '', regon: '', przez_pelnomocnika: '1', pelnomocnik_imie_nazwisko: '', pelnomocnik_nazwa: '', pelnomocnik_mail: '' },
+        Zamawiajacy: { krs: '', nazwa: '', nip: '', regon: '', prowadzacy_postepowanie: 'null' },
+        ZamowieniePubliczne: { numer_bzp: '', numer_postepowania: '', numer_ted: '', tytul: '' },
+      });
     } else if (activeDoc.doc_class === 'pelnomocnictwo') {
-      currentData.pelnomocnictwo = emptyForms().pelnomocnictwo;
-    } else if (activeDoc.doc_class === 'przelew') {
-      currentData.przelew = emptyForms().przelew;
+      setPelnomocnictwoData({
+        mocodawca: { typ: 'osoba_prawna', nazwa: '', nip: '', krs: '', imie_nazwisko: '', podpisujacy_imie_nazwisko: '' },
+        pelnomocnicy: { imie_nazwisko: '', pesel: '' },
+      });
+    } else {
+      setPrzelewData({
+        przelew_bankowy: { data_operacji: '', kwota: '', na_rachunek: '60 1010 1010 0081 3622 3100 0000', numer_transakcji: '', tytul: '', z_rachunku: '' },
+      });
     }
-    newSlots[currentDocIndex] = { ...activeDoc, data: currentData };
-    setDocSlots(newSlots);
   };
 
-  // Pobranie wyników z bazy danych backendu
+  // Pobranie wyników z bazy danych backendu (jeśli backend jest uruchomiony).
   const loadFromBackend = async () => {
     try {
       const docs = await listDocuments();
       if (docs.length === 0) {
         setSaveNotification('W bazie nie ma jeszcze żadnych wyników.');
       } else {
-        const forms = hydrateForms(docs);
-        const newSlots = [...docSlots];
-        const currentData = { ...activeDoc.data };
-        if (forms.odwolanie) currentData.odwolanie = forms.odwolanie;
-        if (forms.pelnomocnictwo) currentData.pelnomocnictwo = forms.pelnomocnictwo;
-        if (forms.przelew) currentData.przelew = forms.przelew;
-        newSlots[currentDocIndex] = { ...activeDoc, data: currentData };
-        setDocSlots(newSlots);
-        setSaveNotification(`Wczytano ${docs.length} dokument(ów) z bazy danych.`);
+        const empty = emptyForms();
+        const mapped: DocumentSlot[] = renumberTitles(docs.map((d, i) => {
+          const forms = hydrateForms([d]);
+          const cls = d.doc_class;
+          return {
+            id: d.client_doc_id ?? `backend-${i}`,
+            doc_class: cls,
+            title: '',
+            categoryLabel: '',
+            defaultFilename: d.source_name ?? `${cls}.pdf`,
+            sourceName: d.source_name ?? '',
+            data: {
+              odwolanie: forms.odwolanie ?? empty.odwolanie,
+              pelnomocnictwo: forms.pelnomocnictwo ?? empty.pelnomocnictwo,
+              przelew: forms.przelew ?? empty.przelew,
+            },
+          };
+        }));
+        revokeSlotUrls(docSlots);
+        setDocSlots(mapped);
+        setCurrentDocIndex(0);
+        setOdwolanieData(mapped[0].data.odwolanie);
+        setPelnomocnictwoData(mapped[0].data.pelnomocnictwo);
+        setPrzelewData(mapped[0].data.przelew);
+        setSaveNotification(`Wczytano ${docs.length} plików z bazy danych.`);
       }
     } catch {
       setSaveNotification('Nie udało się połączyć z bazą danych (backend może być wyłączony).');
@@ -233,211 +276,192 @@ export default function App() {
     setTimeout(() => setSaveNotification(null), 4000);
   };
 
-  const handleFolderSelection = (fileList: FileList | File[]) => {
-    const rawFiles = Array.from(fileList);
-    if (rawFiles.length === 0) return;
+  const handleFileSelection = (file: File) => {
+    const isZip =
+      file.name.toLowerCase().endsWith('.zip') ||
+      file.type === 'application/zip' ||
+      file.type === 'application/x-zip-compressed';
 
-    let rootFolder = 'Paczka_dokumentów';
-    const firstRel = (rawFiles[0] as unknown as { webkitRelativePath?: string }).webkitRelativePath;
-    if (firstRel) {
-      const parts = firstRel.split('/');
-      if (parts.length > 1) {
-        rootFolder = parts[0];
-      }
+    if (!isZip) {
+      setErrorMessage(`Wybrany plik („${file.name}”) nie jest archiwum .zip. Wybierz plik z rozszerzeniem .zip.`);
+      setSelectedZip(null);
+      return;
+    }
+    if (file.size > MAX_ZIP_BYTES) {
+      setErrorMessage(`Archiwum jest zbyt duże (limit ${MAX_ZIP_BYTES / 1024 / 1024} MB).`);
+      setSelectedZip(null);
+      return;
     }
 
     setErrorMessage(null);
-    setSelectedFolder({ name: rootFolder, files: rawFiles });
+    setSelectedZip(file);
   };
 
-  // Przetwarzanie plików przez Pipeline Backend (OCR + LLM)
   const startProcessing = async () => {
-    if (!selectedFolder || selectedFolder.files.length === 0) return;
+    if (!selectedZip) return;
 
-    const files = selectedFolder.files;
-    const initialSlots: DocumentSlot[] = [];
-
-    files.forEach((file, idx) => {
-      const relPath = (file as unknown as { webkitRelativePath?: string }).webkitRelativePath || file.name;
-      const parts = relPath.split('/').filter(Boolean);
-
-      let folderName = 'Sprawa';
-      if (parts.length >= 3) {
-        folderName = parts[1].replace(/[_]/g, ' ').replace(/\s*\d+$/, '').trim() || parts[1];
-      } else if (parts.length === 2) {
-        folderName = parts[0].replace(/[_]/g, ' ').replace(/\s*\d+$/, '').trim() || parts[0];
-      }
-
-      const lowerName = file.name.toLowerCase();
-      let docClass: ExtendedDocClass = 'nierozpoznany';
-      let categoryLabel = 'Nierozpoznany';
-
-      if (lowerName.includes('odwol') || lowerName.includes('odwoł') || lowerName.includes('appeal')) {
-        docClass = 'odwolanie';
-        categoryLabel = 'Odwołanie';
-      } else if (lowerName.includes('pelnom') || lowerName.includes('pełnom') || lowerName.includes('power')) {
-        docClass = 'pelnomocnictwo';
-        categoryLabel = 'Pełnomocnictwo';
-      } else if (lowerName.includes('przel') || lowerName.includes('oplat') || lowerName.includes('opłat') || lowerName.includes('trans')) {
-        docClass = 'przelew';
-        categoryLabel = 'Przelew';
-      }
-
-      const blobUrl = URL.createObjectURL(file);
-      const extractedFile: ExtractedFile = {
-        name: file.name,
-        blob: file,
-        url: blobUrl,
-        size: file.size,
-      };
-
-      let relativePath = file.name;
-      if (parts.length >= 2) {
-        relativePath = parts.slice(1).join('/');
-      }
-
-      initialSlots.push({
-        id: `doc-${idx + 1}`,
-        doc_class: docClass,
-        title: file.name,
-        categoryLabel,
-        defaultFilename: file.name,
-        sourceName: file.name,
-        folderName,
-        relativePath,
-        file: extractedFile,
-        data: emptyForms(),
-      });
-    });
-
-    setDocSlots(initialSlots);
-    setCurrentDocIndex(0);
-
-    // Przejdź do stanu analizy przez backend (OCR + LLM)
     setStage('loading');
-    setAnalyzingProgress({ current: 0, total: initialSlots.length, currentFile: initialSlots[0]?.sourceName || '' });
+    setLoadingProgress(10);
+    setLoadingStep(1);
 
+    let extracted: ExtractedFile[];
+    try {
+      extracted = await extractZipFiles(selectedZip);
+    } catch (e) {
+      // Uszkodzone lub zbyt duże archiwum — wracamy do ekranu wgrywania z czytelnym błędem.
+      const msg = e instanceof Error ? e.message : 'nieznany błąd';
+      setErrorMessage(`Nie udało się odczytać archiwum .zip: ${msg}`);
+      setSelectedZip(null);
+      setStage('upload');
+      return;
+    }
+
+    // Każdy PDF to osobny dokument — może być 3 przelewów, 2 odwołań i 0 pełnomocnictw.
+    // extractZipFiles zwraca już tylko PDF-y.
+    const newSlots: DocumentSlot[] = renumberTitles(
+      extracted.length > 0
+        ? extracted.map((f) => makeDoc(classifyName(f.name), 1, f, f.name))
+        : defaultDocs(),  // archiwum testowe bez PDF-ów — zostawiamy 3 puste formularze
+    );
+
+    revokeSlotUrls(docSlots);
+    setDocSlots(newSlots);
+    setCurrentDocIndex(0);
+    setOdwolanieData(newSlots[0].data.odwolanie);
+    setPelnomocnictwoData(newSlots[0].data.pelnomocnictwo);
+    setPrzelewData(newSlots[0].data.przelew);
+
+    setLoadingProgress(40);
+    setLoadingStep(2);
+
+    if (extracted.length === 0) {
+      setErrorMessage('W archiwum nie znaleziono plików PDF — wgraj ZIP z plikami .pdf.');
+      setLoadingProgress(100);
+      setLoadingStep(4);
+      setStage('splitscreen');
+      return;
+    }
+
+    // Wyślij skany do backendu: OCR + LLM + zapis do SQLite.
+    // Czekamy z przejściem do formularza, żeby wynik nie nadpisał danych wpisanych przez użytkownika.
+    // Demo działa dalej, jeśli backend nie jest uruchomiony.
     try {
       const token = getClientToken();
-      const updatedSlots = [...initialSlots];
-
-      for (let i = 0; i < updatedSlots.length; i++) {
-        const slot = updatedSlots[i];
-        if (slot.file) {
-          setAnalyzingProgress({ current: i + 1, total: updatedSlots.length, currentFile: slot.sourceName });
+      const results = await Promise.all(
+        newSlots.map(async (slot) => {
+          if (!slot.file) return null;
           try {
-            // Wywołaj backend OCR + LLM
-            const analysisClass = slot.doc_class === 'nierozpoznany' ? classifyName(slot.sourceName) : slot.doc_class;
-            const res = await analyzeDocument(
+            return await analyzeDocument(
               slot.file.blob,
               slot.file.name,
               token,
-              analysisClass,
+              slot.doc_class,
               slot.id,
             );
-
-            if (res) {
-              const detectedClass: ExtendedDocClass =
-                (classFromLlm(res.llm?.class) as ExtendedDocClass) ??
-                (res.doc_class as ExtendedDocClass) ??
-                slot.doc_class;
-
-              if (res.llm?.rejected) {
-                slot.doc_class = 'nierozpoznany';
-                slot.categoryLabel = 'Nierozpoznany dokument';
-              } else if (detectedClass && detectedClass !== 'nierozpoznany') {
-                slot.doc_class = detectedClass;
-                slot.categoryLabel = CLASS_LABEL[detectedClass] || slot.categoryLabel;
-              }
-
-              if (!res.llm?.rejected && detectedClass !== 'nierozpoznany' && res.canonical_json && typeof res.canonical_json === 'object') {
-                const hydrated = hydrateForms([
-                  { doc_class: detectedClass, canonical_json: res.canonical_json },
-                ]);
-                const empty = emptyForms();
-                slot.data = {
-                  odwolanie: hydrated.odwolanie ?? empty.odwolanie,
-                  pelnomocnictwo: hydrated.pelnomocnictwo ?? empty.pelnomocnictwo,
-                  przelew: hydrated.przelew ?? empty.przelew,
-                };
-              }
-              slot.confidence = res.llm?.confidence ?? null;
-            }
-          } catch (err) {
-            console.warn(`Analiza pliku ${slot.sourceName} nie powiodła się (używam stanu początkowego):`, err);
+          } catch (e) {
+            console.warn(`Analiza ${slot.id} nie udała się:`, e);
+            return null;
           }
-        }
-      }
-      setDocSlots(updatedSlots);
-    } catch (e) {
-      console.warn('Błąd połączenia z backendem podczas analizy:', e);
-    } finally {
-      setAnalyzingProgress(null);
-      setStage('splitscreen');
-    }
-  };
-
-  const goToNextDoc = () => {
-    if (currentDocIndex < docSlots.length - 1) {
-      setCurrentDocIndex((prev) => prev + 1);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  };
-
-  const goToPrevDoc = () => {
-    if (currentDocIndex > 0) {
-      setCurrentDocIndex((prev) => prev - 1);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  };
-
-  // Generowanie kanonicznego JSON zgodnego z regułami
-  const getCanonicalJson = (index: number = currentDocIndex) => {
-    const slot = docSlots[index];
-    if (!slot) return {};
-    const docClass = slot.doc_class;
-
-    if (docClass === 'odwolanie' || docClass === 'pelnomocnictwo' || docClass === 'przelew') {
-      return buildCanonical(docClass, slot.data);
-    }
-    // Dla nierozpoznanego typu dokumentu zwracane są puste klamerki {}
-    return {};
-  };
-
-  // Aktualizacja pola w formularzu aktywnego dokumentu
-  const updateActiveData = (updater: (prev: FormBundle) => FormBundle) => {
-    setDocSlots((prev) => {
-      const next = [...prev];
-      if (next[currentDocIndex]) {
-        next[currentDocIndex] = {
-          ...next[currentDocIndex],
-          data: updater(next[currentDocIndex].data),
+        }),
+      );
+      const empty = emptyForms();
+      let changed = false;
+      results.forEach((result, i) => {
+        if (!result || !newSlots[i]) return;
+        // Klasa z LLM ma pierwszeństwo; backend nazywa przelew `potwierdzenie_przelewu`.
+        // Gdy LLM nie poda rozpoznawalnej klasy, zostaje klasa z nazwy pliku.
+        const cls = classFromLlm(result.llm?.class) ?? newSlots[i].doc_class;
+        const forms = hydrateForms([
+          { doc_class: cls, canonical_json: result.canonical_json },
+        ]);
+        newSlots[i].doc_class = cls;
+        newSlots[i].data = {
+          odwolanie: forms.odwolanie ?? empty.odwolanie,
+          pelnomocnictwo: forms.pelnomocnictwo ?? empty.pelnomocnictwo,
+          przelew: forms.przelew ?? empty.przelew,
         };
+        newSlots[i].confidence = result.llm?.confidence ?? null;
+        changed = true;
+      });
+      if (changed) {
+        setDocSlots(renumberTitles([...newSlots]));
+        const d = newSlots[0];
+        setOdwolanieData(d.data.odwolanie);
+        setPelnomocnictwoData(d.data.pelnomocnictwo);
+        setPrzelewData(d.data.przelew);
       }
-      return next;
-    });
+    } catch (e) {
+      console.warn('Backend analizy niedostępny:', e);
+    }
+    setLoadingProgress(100);
+    setLoadingStep(4);
+    setStage('splitscreen');
   };
 
-  // Zapisuje wszystkie dokumenty do bazy backendu
-  const saveAll = async () => {
-    const token = getClientToken();
-    let created = 0;
-    let corrected = 0;
+  // Zapisz dane aktywnego formularza do listy dokumentów i przełącz na inny.
+  // Dane każdego pliku są niezależne — przełączanie nic nie czyści.
+  const commitActiveToDocs = (source: DocumentSlot[] = docSlots): DocumentSlot[] => {
+    const copy = [...source];
+    const i = currentDocIndex;
+    if (copy[i]) {
+      copy[i] = {
+        ...copy[i],
+        data: {
+          odwolanie: odwolanieData,
+          pelnomocnictwo: pelnomocnictwoData,
+          przelew: przelewData,
+        },
+      };
+    }
+    return copy;
+  };
+
+  const selectDoc = (index: number) => {
+    if (index < 0 || index >= docSlots.length || index === currentDocIndex) return;
+    const updated = commitActiveToDocs();
+    setDocSlots(updated);
+    const d = updated[index];
+    setOdwolanieData(d.data.odwolanie);
+    setPelnomocnictwoData(d.data.pelnomocnictwo);
+    setPrzelewData(d.data.przelew);
+    setCurrentDocIndex(index);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const goToNextDoc = () => selectDoc(currentDocIndex + 1);
+  const goToPrevDoc = () => selectDoc(currentDocIndex - 1);
+
+  // Zmiana typu aktywnego pliku. Dane wprowadzone dla poprzedniego typu
+  // zostają w pamięci dokumentu — wracają po przełączeniu z powrotem.
+  // Wybór: ZACHOWAĆ client_doc_id (id). Backend aktualizuje doc_class przy
+  // ingestowaniu tego samego id, więc nie powstaje stary, "śmieciowy" wiersz.
+  // Alternatywa (nowy id + wyciszenie starego wiersza) zostawiałaby dane
+  // rozproszone po dwóch wierszach i wymagała zmian w backendowym query.
+  const changeDocClass = (next: DocClass) => {
+    const updated = commitActiveToDocs();
+    const i = currentDocIndex;
+    if (!updated[i] || updated[i].doc_class === next) return;
+    updated[i] = { ...updated[i], doc_class: next };
+    const renumbered = renumberTitles(updated);
+    setDocSlots(renumbered);
+    setOdwolanieData(renumbered[i].data.odwolanie);
+    setPelnomocnictwoData(renumbered[i].data.pelnomocnictwo);
+    setPrzelewData(renumbered[i].data.przelew);
+  };
+
+  const handleSaveData = async () => {
     try {
-      for (let i = 0; i < docSlots.length; i++) {
-        const slot = docSlots[i];
-        const result = await ingestDocument({
-          client_token: token,
-          client_doc_id: slot.id,
-          doc_class: slot.doc_class,
-          canonical_json: getCanonicalJson(i),
-          source_name: slot.file?.name ?? slot.defaultFilename,
-        });
-        if (result.correction_session_id) corrected++;
-        else created++;
-      }
+      const result = await ingestDocument({
+        client_token: getClientToken(),
+        client_doc_id: activeDoc.id,
+        doc_class: activeDoc.doc_class,
+        canonical_json: getCanonicalJson(),
+        source_name: activeDoc.sourceName,
+      });
       setSaveNotification(
-        `Zapisano wszystkie ${docSlots.length} dokumenty (nowe: ${created}, poprawki: ${corrected}).`
+        result.correction_session_id
+          ? 'Zapisano poprawkę — trafiła do bazy jako dane do douczania modelu.'
+          : 'Zapisano wynik w bazie danych.'
       );
     } catch {
       setSaveNotification('Backend niedostępny — zmiany zostały w formularzu (demo działa dalej).');
@@ -445,65 +469,129 @@ export default function App() {
     setTimeout(() => setSaveNotification(null), 4000);
   };
 
-  // Pobranie spakowanego folderu ze wszystkimi podfolderami i plikami .json
-  const downloadAllJsonArchive = () => {
-    const zipFiles: ZipFileInput[] = [];
+  // Kanoniczny JSON aktywnego dokumentu (zgodny z oczekiwane-json).
+  const getCanonicalJson = () => buildCanonical(activeDoc.doc_class, {
+    odwolanie: odwolanieData,
+    pelnomocnictwo: pelnomocnictwoData,
+    przelew: przelewData,
+  });
 
-    docSlots.forEach((slot, index) => {
-      const origFilename = slot.file?.name || slot.defaultFilename;
-      const jsonFilename = origFilename.replace(/\.[^/.]+$/, '') + '.json';
+  const activeDoc = docSlots[currentDocIndex];
 
-      let relPath = '';
-      if (slot.relativePath) {
-        relPath = slot.relativePath.replace(/\.[^/.]+$/, '') + '.json';
-      } else {
-        const folder = (slot.folderName || 'Sprawa').replace(/\s+/g, '_');
-        relPath = `${folder}/${jsonFilename}`;
+  // Zapisuje KAŻDY plik z osobna (nawet 3 przelewy i 2 odwołania) i pobiera
+  // jeden plik JSON z wszystkimi danymi ułożonymi po kolei.
+  const saveAll = async () => {
+    const token = getClientToken();
+    const allDocs = commitActiveToDocs();
+    let created = 0;
+    let corrected = 0;
+    let failed = 0;
+    const entries: Array<{ plik: string; typ: string; json: unknown }> = [];
+    for (const slot of allDocs) {
+      const canonical = buildCanonical(slot.doc_class, slot.data);
+      // Eksportujemy każdy dokument niezależnie od wyniku zapisu w bazie —
+      // jeden błędny dokument nie kasuje danych pozostałych.
+      entries.push({ plik: slot.sourceName, typ: slot.doc_class, json: canonical });
+      try {
+        const result = await ingestDocument({
+          client_token: token,
+          client_doc_id: slot.id,
+          doc_class: slot.doc_class,
+          canonical_json: canonical,
+          source_name: slot.sourceName,
+        });
+        if (result.correction_session_id) corrected++;
+        else created++;
+      } catch (e) {
+        console.warn(`Zapis ${slot.id} nie udał się:`, e);
+        failed++;
       }
+    }
 
-      zipFiles.push({
-        path: relPath,
-        content: JSON.stringify(getCanonicalJson(index), null, 2),
-      });
-    });
-
-    const zipBlob = createZipArchive(zipFiles);
-    const archiveName = `${selectedFolder?.name || 'odwolania2json'}.zip`;
-    const url = URL.createObjectURL(zipBlob);
-    const dlAnchor = document.createElement('a');
-    dlAnchor.setAttribute('href', url);
-    dlAnchor.setAttribute('download', archiveName);
-    dlAnchor.click();
+    const blob = new Blob([JSON.stringify(entries, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'odwolania2json.json';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
     URL.revokeObjectURL(url);
-  };
 
-  // Zapisuje wszystkie dokumenty i przechodzi do podsumowania z pobraniem JSON
-  const handleSaveAllAndFinish = async () => {
-    await saveAll();
-    downloadAllJsonArchive();
+    setSaveNotification(
+      `Zapisano ${allDocs.length} plików (nowe: ${created}, poprawki: ${corrected}${failed ? `, błędy: ${failed}` : ''}).`
+    );
     setStage('done');
   };
 
-  const changeDocClass = (newClass: ExtendedDocClass) => {
-    setDocSlots((prev) => {
-      const next = [...prev];
-      if (next[currentDocIndex]) {
-        next[currentDocIndex] = {
-          ...next[currentDocIndex],
-          doc_class: newClass,
-          categoryLabel: newClass === 'nierozpoznany' ? 'Nierozpoznany' : CLASS_LABEL[newClass],
-        };
-      }
-      return next;
-    });
+  // Powrót do menu — czyści dane, żeby móc wczytać nowy plik .zip.
+  const resetToMenu = () => {
+    const empty = emptyForms();
+    setStage('upload');
+    setSelectedZip(null);
+    setCurrentDocIndex(0);
+    setShowJsonModal(false);
+    setSaveNotification(null);
+    revokeSlotUrls(docSlots);
+    setDocSlots(defaultDocs());
+    setOdwolanieData(empty.odwolanie);
+    setPelnomocnictwoData(empty.pelnomocnictwo);
+    setPrzelewData(empty.przelew);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   return (
     <>
-      {/* 1. GŁÓWNA ZAWARTOŚĆ */}
+      {/* 1. TOPBAR GOV.PL */}
+      <header className="gov-topbar">
+        <div className="gov-container">
+          <div className="gov-topbar-inner">
+            <div className="gov-portal-brand">
+              <span className="gov-portal-mark">gov.pl</span>
+              <span className="gov-portal-subtitle">Serwis Rzeczypospolitej Polskiej</span>
+            </div>
+            <div className="gov-a11y-tools" role="group" aria-label="Narzędzia dostępności">
+              <button
+                type="button"
+                className="a11y-btn"
+                onClick={() => setFontSize(16)}
+                aria-label="Domyślny rozmiar tekstu"
+              >
+                A
+              </button>
+              <button
+                type="button"
+                className="a11y-btn"
+                onClick={() => setFontSize(18)}
+                aria-label="Średni rozmiar tekstu"
+              >
+                A+
+              </button>
+              <button
+                type="button"
+                className="a11y-btn"
+                onClick={() => setFontSize(20)}
+                aria-label="Duży rozmiar tekstu"
+              >
+                A++
+              </button>
+              <button
+                type="button"
+                className="a11y-btn contrast-toggle"
+                onClick={toggleContrast}
+                aria-pressed={highContrast}
+              >
+                Kontrast
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* 2. GŁÓWNA ZAWARTOŚĆ */}
       <main className="gov-main">
         {/* ======================================================== */}
-        {/* WIDOK 1: EKRAN WCZYTYWANIA FOLDERU Z DOKUMENTAMI        */}
+        {/* WIDOK 1: EKRAN WCZYTYWANIA ARCHIWUM .ZIP                 */}
         {/* ======================================================== */}
         {stage === 'upload' && (
           <div className="gov-container">
@@ -512,22 +600,19 @@ export default function App() {
             </div>
 
             <p className="service-description">
-              Wybierz folder zawierający podfoldery ze sprawami odwoławczymi. System automatycznie pogrupuje pliki,
-              przetworzy je przez model OCR i LLM oraz wyodrębni kluczowe informacje procesowe.
+              Prześlij dokumentację sprawy odwoławczej w formacie .zip. System automatycznie rozpozna rodzaj każdego
+              pisma, wyodrębni kluczowe informacje procesowe i umożliwi ich prostą weryfikację.
             </p>
 
             <section className="upload-section" aria-label="Przesyłanie dokumentacji">
               <input
                 type="file"
-                ref={folderInputRef}
+                ref={fileInputRef}
                 className="file-input-hidden"
-                // @ts-expect-error webkitdirectory to standardowe rozszerzenie przeglądarek do wyboru całego folderu
-                webkitdirectory=""
-                directory=""
-                multiple
+                accept=".zip,application/zip,application/x-zip-compressed"
                 onChange={(e) => {
-                  if (e.target.files && e.target.files.length > 0) {
-                    handleFolderSelection(e.target.files);
+                  if (e.target.files && e.target.files[0]) {
+                    handleFileSelection(e.target.files[0]);
                   }
                 }}
               />
@@ -535,7 +620,7 @@ export default function App() {
               <button
                 type="button"
                 className="gov-btn-primary"
-                onClick={() => folderInputRef.current?.click()}
+                onClick={() => fileInputRef.current?.click()}
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -546,21 +631,23 @@ export default function App() {
                   strokeLinejoin="round"
                   aria-hidden="true"
                 >
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
                 </svg>
-                <span>Załaduj folder</span>
+                <span>Załaduj plik .zip</span>
               </button>
 
               <div
                 className={`dropzone ${dragOver ? 'dragover' : ''}`}
                 role="button"
                 tabIndex={0}
-                aria-label="Upuść folder tutaj lub naciśnij Enter, aby wybrać z dysku"
-                onClick={() => folderInputRef.current?.click()}
+                aria-label="Upuść plik .zip tutaj lub naciśnij Enter, aby wybrać z dysku"
+                onClick={() => fileInputRef.current?.click()}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    folderInputRef.current?.click();
+                    fileInputRef.current?.click();
                   }
                 }}
                 onDragOver={(e) => {
@@ -571,8 +658,8 @@ export default function App() {
                 onDrop={(e) => {
                   e.preventDefault();
                   setDragOver(false);
-                  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                    handleFolderSelection(e.dataTransfer.files);
+                  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                    handleFileSelection(e.dataTransfer.files[0]);
                   }
                 }}
               >
@@ -590,26 +677,26 @@ export default function App() {
                   <line x1="12" y1="11" x2="12" y2="17" />
                   <polyline points="9 14 12 11 15 14" />
                 </svg>
-                <p className="dropzone-label">lub upuść folder tutaj</p>
-                <p className="dropzone-hint">Akceptowany format: folder z podfolderami spraw (np. Sprawa 1, Sprawa 2)</p>
+                <p className="dropzone-label">lub upuść pliki tutaj</p>
+                <p className="dropzone-hint">Akceptowany format: archiwum .zip (3 pisma w sprawie)</p>
               </div>
 
               {errorMessage && (
                 <div className="status-box visible is-error" role="status" aria-live="polite">
-                  <p className="status-title">Nieprawidłowy folder lub pliki</p>
+                  <p className="status-title">Nieprawidłowy format pliku</p>
                   <p className="status-meta">{errorMessage}</p>
                 </div>
               )}
 
-              {selectedFolder && !errorMessage && (
+              {selectedZip && !errorMessage && (
                 <div className="status-box visible is-success" role="status" aria-live="polite">
-                  <p className="status-title">Wybrano folder: {selectedFolder.name}</p>
+                  <p className="status-title">Wybrano plik: {selectedZip.name}</p>
                   <p className="status-meta">
-                    Liczba plików: {selectedFolder.files.length} ({formatFileSize(selectedFolder.files.reduce((acc, f) => acc + f.size, 0))}) • Gotowy do analizy i grupowania według spraw
+                    Rozmiar archiwum: {formatFileSize(selectedZip.size)} • Gotowy do analizy (3 dokumenty sprawy)
                   </p>
                   <div className="status-actions">
                     <button type="button" className="gov-btn-process" onClick={startProcessing}>
-                      <span>Przetwórz (OCR + LLM)</span>
+                      <span>Przetwórz do JSON</span>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="18" height="18">
                         <polyline points="9 18 15 12 9 6" />
                       </svg>
@@ -618,11 +705,11 @@ export default function App() {
                       type="button"
                       className="gov-btn-secondary"
                       onClick={() => {
-                        setSelectedFolder(null);
-                        if (folderInputRef.current) folderInputRef.current.value = '';
+                        setSelectedZip(null);
+                        if (fileInputRef.current) fileInputRef.current.value = '';
                       }}
                     >
-                      Usuń folder
+                      Usuń plik
                     </button>
                   </div>
                 </div>
@@ -630,182 +717,119 @@ export default function App() {
             </section>
 
             <div className="gov-info-note">
-              <strong>Informacja o przetwarzaniu:</strong> Wewnątrz folderu głównego mogą znajdować się podfoldery z poszczególnymi sprawami. System automatycznie powiąże pliki ze sobą.
+              <strong>Informacja o przetwarzaniu:</strong> Archiwum powinno zawierać dokumenty sprawy odwoławczej (odwołanie, pełnomocnictwo oraz potwierdzenie uiszczenia wpisu).
             </div>
           </div>
         )}
 
         {/* ======================================================== */}
-        {/* EKRAN ŁADOWANIA / PRZETWARZANIA PIPELINE                 */}
+        {/* WIDOK 2: EKRAN ŁADOWANIA (LOADING SCREEN)                */}
         {/* ======================================================== */}
-        {stage === 'loading' && analyzingProgress && (
-          <div className="gov-container" style={{ padding: '60px 24px', textAlign: 'center' }}>
-            <div style={{ maxWidth: '520px', margin: '0 auto', background: '#fff', border: '1px solid var(--gov-border-light)', padding: '36px', borderRadius: '6px' }}>
-              <div style={{ marginBottom: '20px' }}>
-                <svg className="animate-spin" viewBox="0 0 24 24" fill="none" stroke="var(--gov-blue)" strokeWidth="2" width="48" height="48" style={{ margin: '0 auto' }}>
-                  <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="12"></circle>
-                </svg>
+        {stage === 'loading' && (
+          <div className="gov-container">
+            <div className="service-header">
+              <h1 className="service-title">Przetwarzanie dokumentacji sprawy</h1>
+            </div>
+
+            <div className="gov-loading-card" role="status" aria-live="polite">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '16px' }}>
+                <div className="gov-spinner" aria-hidden="true"></div>
+                <div>
+                  <h2 style={{ margin: '0 0 4px', fontSize: '1.25rem', fontWeight: 900, color: 'var(--gov-text)' }}>
+                    Trwa analiza archiwum {selectedZip?.name}
+                  </h2>
+                  <p style={{ margin: 0, fontSize: '0.9375rem', color: 'var(--gov-text-muted)' }}>
+                    Proszę czekać, system przygotowuje dane...
+                  </p>
+                </div>
               </div>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0 0 10px' }}>
-                Przetwarzanie dokumentów przez AI...
-              </h2>
-              <p style={{ color: 'var(--gov-text-muted)', fontSize: '0.9375rem', margin: '0 0 16px' }}>
-                Plik {analyzingProgress.current} z {analyzingProgress.total}: <strong>{analyzingProgress.currentFile}</strong>
-              </p>
-              <div style={{ width: '100%', height: '8px', background: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
-                <div
-                  style={{
-                    height: '100%',
-                    background: 'var(--gov-blue)',
-                    width: `${Math.round((analyzingProgress.current / analyzingProgress.total) * 100)}%`,
-                    transition: 'width 0.3s ease',
-                  }}
-                ></div>
+
+              <div className="gov-progress-bar-track" aria-hidden="true">
+                <div className="gov-progress-bar-fill" style={{ width: `${loadingProgress}%` }}></div>
+              </div>
+
+              <div style={{ marginTop: '20px' }}>
+                <div className={`gov-step-item ${loadingStep > 1 ? 'done' : loadingStep === 1 ? 'active' : ''}`}>
+                  <span>{loadingStep > 1 ? '✓' : '•'}</span>
+                  <span>1. Rozpakowywanie archiwum .zip (3 dokumenty procesowe)</span>
+                </div>
+                <div className={`gov-step-item ${loadingStep > 2 ? 'done' : loadingStep === 2 ? 'active' : ''}`}>
+                  <span>{loadingStep > 2 ? '✓' : '•'}</span>
+                  <span>2. Wykrywanie warstwy tekstowej i odczyt OCR Tesseract 5 pol</span>
+                </div>
+                <div className={`gov-step-item ${loadingStep > 3 ? 'done' : loadingStep === 3 ? 'active' : ''}`}>
+                  <span>{loadingStep > 3 ? '✓' : '•'}</span>
+                  <span>3. Walidacja sum kontrolnych (NIP, REGON, NRB)</span>
+                </div>
+                <div className={`gov-step-item ${loadingStep === 4 ? 'done' : ''}`}>
+                  <span>{loadingStep === 4 ? '✓' : '•'}</span>
+                  <span>4. Przygotowanie danych do panelu weryfikacji</span>
+                </div>
               </div>
             </div>
           </div>
         )}
 
         {/* ======================================================== */}
-        {/* WIDOK 2: SPLIT-SCREEN (CZYSTY, ESTETYCZNY DLA LUDZI)     */}
+        {/* WIDOK 3: SPLIT-SCREEN (CZYSTY, ESTETYCZNY DLA LUDZI)     */}
         {/* ======================================================== */}
         {stage === 'splitscreen' && (
           <div className="gov-container-wide">
-            {/* Pasek nawigacyjny: Slider zakładek ze strzałkami, Poprzedni/Następny plik, Zapisz wszystko */}
+            {/* Pasek nawigacyjny: poprzedni/następny + zapis wszystkiego */}
             <div className="gov-doc-nav-bar">
-              {/* Sekcja slidera zakładek ze strzałkami po lewej i prawej */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                 <button
                   type="button"
-                  className="slider-arrow-btn"
-                  onClick={() => scrollTabs('left')}
-                  title="Przewiń listę plików w lewo"
-                  aria-label="Przewiń w lewo"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="16" height="16">
-                    <polyline points="15 18 9 12 15 6"></polyline>
-                  </svg>
-                </button>
-
-                {/* Zakładki z nazwami wszystkich plików pogrupowane w podfoldery/sprawy z możliwością poziomego scrollowania */}
-                <div className="doc-files-scroll-container" ref={tabsScrollRef} role="tablist">
-                  {(() => {
-                    const groups: { folderName: string; indices: number[] }[] = [];
-                    docSlots.forEach((slot, index) => {
-                      const fName = slot.folderName || 'Sprawa';
-                      const lastGroup = groups[groups.length - 1];
-                      if (lastGroup && lastGroup.folderName === fName) {
-                        lastGroup.indices.push(index);
-                      } else {
-                        groups.push({ folderName: fName, indices: [index] });
-                      }
-                    });
-
-                    return groups.map((grp) => {
-                      const isFolderActive = grp.indices.includes(currentDocIndex);
-                      return (
-                        <div
-                          key={grp.folderName + grp.indices[0]}
-                          className={`doc-folder-group ${isFolderActive ? 'is-active-folder' : ''}`}
-                        >
-                          {grp.indices.map((idx) => {
-                            const slot = docSlots[idx];
-                            const filename = slot.file?.name || slot.defaultFilename;
-                            const isActive = idx === currentDocIndex;
-                            return (
-                              <button
-                                key={slot.id + idx}
-                                ref={(el) => { tabButtonRefs.current[idx] = el; }}
-                                type="button"
-                                role="tab"
-                                aria-selected={isActive}
-                                className={`doc-file-tab-btn ${isActive ? 'active' : ''}`}
-                                onClick={() => {
-                                  setCurrentDocIndex(idx);
-                                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                                }}
-                                title={filename}
-                              >
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14" style={{ flexShrink: 0 }}>
-                                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                                  <polyline points="14 2 14 8 20 8"></polyline>
-                                </svg>
-                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {filename}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-
-                <button
-                  type="button"
-                  className="slider-arrow-btn"
-                  onClick={() => scrollTabs('right')}
-                  title="Przewiń listę plików w prawo"
-                  aria-label="Przewiń w prawo"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="16" height="16">
-                    <polyline points="9 18 15 12 9 6"></polyline>
-                  </svg>
-                </button>
-              </div>
-
-              {/* Przyciski nawigacji: Poprzedni plik, Następny plik po prawej stronie od nazw plików */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                <button
-                  type="button"
-                  className="clean-btn-outline-lg"
+                  className="gov-btn-secondary"
                   onClick={goToPrevDoc}
                   disabled={currentDocIndex === 0}
-                  style={{ opacity: currentDocIndex === 0 ? 0.4 : 1, cursor: currentDocIndex === 0 ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}
+                  style={{ opacity: currentDocIndex === 0 ? 0.4 : 1, cursor: currentDocIndex === 0 ? 'not-allowed' : 'pointer' }}
                 >
-                  Poprzedni plik
+                  ← Poprzedni
                 </button>
 
-                <button
-                  type="button"
-                  className="clean-btn-outline-lg"
-                  onClick={goToNextDoc}
-                  disabled={currentDocIndex === docSlots.length - 1}
-                  style={{ opacity: currentDocIndex === docSlots.length - 1 ? 0.4 : 1, cursor: currentDocIndex === docSlots.length - 1 ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}
-                >
-                  Następny plik
-                </button>
-              </div>
-
-              <div style={{ flexShrink: 0 }}>
                 <button
                   type="button"
                   className="gov-btn-process"
-                  style={{ padding: '9px 20px', fontSize: '0.9375rem', whiteSpace: 'nowrap' }}
-                  onClick={handleSaveAllAndFinish}
+                  onClick={goToNextDoc}
+                  disabled={currentDocIndex === docSlots.length - 1}
+                  style={{ opacity: currentDocIndex === docSlots.length - 1 ? 0.5 : 1, cursor: currentDocIndex === docSlots.length - 1 ? 'not-allowed' : 'pointer' }}
                 >
-                  Zapisz wszystko
+                  <span>Następny plik →</span>
                 </button>
               </div>
+
+              <button
+                type="button"
+                className="gov-btn-process"
+                onClick={saveAll}
+                title="Zapisz wszystkie dokumenty, pobierz JSON i zakończ"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="16" height="16">
+                  <polyline points="1 13 6 18 15 7"></polyline>
+                  <polyline points="9 13 14 18 23 7"></polyline>
+                </svg>
+                <span>Zapisz wszystkie</span>
+              </button>
             </div>
 
             {/* Powiadomienie o zapisaniu */}
             {saveNotification && (
               <div
+                role="status"
+                aria-live="polite"
                 style={{
                   marginTop: '10px',
                   padding: '10px 16px',
                   backgroundColor: 'var(--gov-success-bg)',
                   borderLeft: '4px solid var(--gov-success)',
                   color: 'var(--gov-success)',
+                  fontWeight: 700,
                   fontSize: '0.875rem',
-                  fontWeight: 600,
+                  borderRadius: '0 3px 3px 0',
                 }}
-                role="status"
-                aria-live="polite"
               >
-                {saveNotification}
+                ✓ {saveNotification}
               </div>
             )}
 
@@ -825,7 +849,7 @@ export default function App() {
                       Podgląd: {activeDoc.file?.name || activeDoc.defaultFilename}
                     </span>
                   </h2>
-                  <span className="gov-badge">Dokument {currentDocIndex + 1} z {docSlots.length}</span>
+                  <span className="gov-badge">Plik {currentDocIndex + 1} z {docSlots.length}</span>
                 </div>
 
                 <div className="gov-pdf-frame-wrapper">
@@ -853,51 +877,37 @@ export default function App() {
                         <polyline points="14 2 14 8 20 8"></polyline>
                       </svg>
                       <h3 style={{ margin: '0 0 6px', fontSize: '1.125rem', color: '#ffffff' }}>
-                        {activeDoc.defaultFilename}
+                        {activeDoc.title}
                       </h3>
                       <p style={{ margin: '0 0 14px', maxWidth: '340px', fontSize: '0.875rem', color: '#8c939d' }}>
-                        W tym oknie wyświetla się plik <strong>{activeDoc.defaultFilename}</strong> z wgranego folderu.
+                        W tym oknie wyświetla się plik <strong>{activeDoc.defaultFilename}</strong> z wgranego archiwum .zip.
                       </p>
-                      <span className="preview-doc-btn">Podgląd dokumentu</span>
+                      <span className="gov-badge warning">Podgląd dokumentu</span>
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* --- PRAWA STRONA: FORMULARZ DANYCH Z BACKENDU --- */}
+              {/* --- PRAWA STRONA: CZYSTE, PROSTE POLA BEZ PRZYTŁACZANIA (IMAGE 2 STYLE) --- */}
               <div className="gov-split-pane">
                 <div className="gov-pane-header">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div>
                     <h2 className="gov-pane-title">
-                      {activeDoc.file?.name || activeDoc.defaultFilename}
+                      {activeDoc.title}
                     </h2>
-                    {activeDoc.confidence != null && (
-                      <span
-                        className={`gov-badge ${
-                          activeDoc.confidence < 0.7
-                            ? 'danger'
-                            : activeDoc.confidence < 0.9
-                              ? 'warning'
-                              : 'success'
-                        }`}
-                        title="Pewność ekstrakcji przez model AI"
-                      >
-                        Pewność: {Math.round(activeDoc.confidence * 100)}%
-                      </span>
-                    )}
                   </div>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button
                       type="button"
-                      className="clean-btn-outline"
+                      className="gov-btn-secondary"
                       onClick={fillSampleGoldData}
-                      title="Wstaw przykładowe dane"
+                      title="Wstaw przykładowe dane z wzorca"
                     >
                       Wstaw przykład
                     </button>
                     <button
                       type="button"
-                      className="clean-btn-outline"
+                      className="gov-btn-secondary"
                       onClick={clearCurrentData}
                       title="Wyczyść wszystkie pola"
                     >
@@ -905,7 +915,7 @@ export default function App() {
                     </button>
                     <button
                       type="button"
-                      className="clean-btn-outline"
+                      className="gov-btn-secondary"
                       onClick={loadFromBackend}
                       title="Pobierz wyniki z bazy danych backendu"
                     >
@@ -913,7 +923,7 @@ export default function App() {
                     </button>
                     <button
                       type="button"
-                      className="clean-btn-outline"
+                      className="gov-btn-secondary"
                       onClick={() => setShowJsonModal(true)}
                     >
                       Podgląd JSON
@@ -922,25 +932,51 @@ export default function App() {
                 </div>
 
                 <div className="gov-form-wrapper">
-                  {/* Wybór typu dokumentu */}
-                  <div className="clean-row" style={{ paddingBottom: '14px', marginBottom: '14px', borderBottom: '1px solid var(--gov-border-light)' }}>
-                    <label
-                      htmlFor="doc_type_select"
-                      className="clean-label"
-                    >
-                      Typ dokumentu:
-                    </label>
-                    <select
-                      id="doc_type_select"
-                      className="clean-select"
-                      value={activeDoc.doc_class}
-                      onChange={(e) => changeDocClass(e.target.value as ExtendedDocClass)}
-                    >
-                      <option value="odwolanie">Odwołanie do KIO</option>
-                      <option value="pelnomocnictwo">Pełnomocnictwo</option>
-                      <option value="przelew">Potwierdzenie przelewu</option>
-                      <option value="nierozpoznany">Nierozpoznany typ</option>
-                    </select>
+                  {/* Wybór pliku i jego typu — razem z pozostałymi danymi w tabeli.
+                      Przełączanie nic nie czyści: każdy plik ma swoje dane. */}
+                  <div className="clean-form-section">
+                    <div className="clean-row">
+                      <label className="clean-label" htmlFor="file-select">Plik:</label>
+                      <select
+                        id="file-select"
+                        className="clean-select"
+                        value={currentDocIndex}
+                        onChange={(e) => selectDoc(Number(e.target.value))}
+                      >
+                        {docSlots.map((slot, index) => (
+                          <option key={slot.id} value={index}>{slot.title} — {slot.sourceName}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="clean-row">
+                      <label className="clean-label" htmlFor="doc-type-select">Typ dokumentu:</label>
+                      <select
+                        id="doc-type-select"
+                        className="clean-select"
+                        value={activeDoc.doc_class}
+                        onChange={(e) => changeDocClass(e.target.value as DocClass)}
+                      >
+                        <option value="odwolanie">Odwołanie</option>
+                        <option value="pelnomocnictwo">Pełnomocnictwo</option>
+                        <option value="przelew">Przelew</option>
+                      </select>
+                    </div>
+                    {activeDoc.confidence != null && (
+                      <div className="clean-row">
+                        <span className="clean-label">Pewność modelu:</span>
+                        <span
+                          className={`gov-badge ${
+                            activeDoc.confidence < 0.7
+                              ? 'danger'
+                              : activeDoc.confidence < 0.9
+                                ? 'warning'
+                                : 'success'
+                          }`}
+                        >
+                          {Math.round(activeDoc.confidence * 100)}%
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* ======================================================== */}
@@ -964,15 +1000,12 @@ export default function App() {
                             type="text"
                             className="clean-input"
                             placeholder="dd.mm.rrrr"
-                            value={activeDoc.data.odwolanie.OdwolanieKIO.data}
+                            value={odwolanieData.OdwolanieKIO.data}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                odwolanie: {
-                                  ...prev.odwolanie,
-                                  OdwolanieKIO: { ...prev.odwolanie.OdwolanieKIO, data: e.target.value },
-                                },
-                              }))
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                OdwolanieKIO: { ...odwolanieData.OdwolanieKIO, data: e.target.value },
+                              })
                             }
                           />
                         </div>
@@ -984,15 +1017,12 @@ export default function App() {
                             type="text"
                             className="clean-input"
                             placeholder="np. Warszawa"
-                            value={activeDoc.data.odwolanie.OdwolanieKIO.miejscowosc}
+                            value={odwolanieData.OdwolanieKIO.miejscowosc}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                odwolanie: {
-                                  ...prev.odwolanie,
-                                  OdwolanieKIO: { ...prev.odwolanie.OdwolanieKIO, miejscowosc: e.target.value },
-                                },
-                              }))
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                OdwolanieKIO: { ...odwolanieData.OdwolanieKIO, miejscowosc: e.target.value },
+                              })
                             }
                           />
                         </div>
@@ -1002,20 +1032,17 @@ export default function App() {
                           <select
                             id="odw_powod"
                             className="clean-select"
-                            value={activeDoc.data.odwolanie.OdwolanieKIO.czynnosc_powod_id}
+                            value={odwolanieData.OdwolanieKIO.czynnosc_powod_id}
                             onChange={(e) => {
                               const sel = CZYNNOSC_POWODY.find((p) => p.id === e.target.value);
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                odwolanie: {
-                                  ...prev.odwolanie,
-                                  OdwolanieKIO: {
-                                    ...prev.odwolanie.OdwolanieKIO,
-                                    czynnosc_powod_id: e.target.value,
-                                    czynnosc_opis: sel && sel.id ? sel.label.replace(/^\d+ - /, '') : '',
-                                  },
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                OdwolanieKIO: {
+                                  ...odwolanieData.OdwolanieKIO,
+                                  czynnosc_powod_id: e.target.value,
+                                  czynnosc_opis: sel && sel.id ? sel.label.replace(/^\d+ - /, '') : '',
                                 },
-                              }));
+                              });
                             }}
                           >
                             {CZYNNOSC_POWODY.map((p) => (
@@ -1033,15 +1060,12 @@ export default function App() {
                             type="text"
                             className="clean-input"
                             placeholder="dd.mm.rrrr"
-                            value={activeDoc.data.odwolanie.OdwolanieKIO.czynnosc_dzien}
+                            value={odwolanieData.OdwolanieKIO.czynnosc_dzien}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                odwolanie: {
-                                  ...prev.odwolanie,
-                                  OdwolanieKIO: { ...prev.odwolanie.OdwolanieKIO, czynnosc_dzien: e.target.value },
-                                },
-                              }))
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                OdwolanieKIO: { ...odwolanieData.OdwolanieKIO, czynnosc_dzien: e.target.value },
+                              })
                             }
                           />
                         </div>
@@ -1063,15 +1087,12 @@ export default function App() {
                             type="text"
                             className="clean-input"
                             placeholder="Pełna nazwa wykonawcy"
-                            value={activeDoc.data.odwolanie.Odwolujacy.nazwa}
+                            value={odwolanieData.Odwolujacy.nazwa}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                odwolanie: {
-                                  ...prev.odwolanie,
-                                  Odwolujacy: { ...prev.odwolanie.Odwolujacy, nazwa: e.target.value },
-                                },
-                              }))
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                Odwolujacy: { ...odwolanieData.Odwolujacy, nazwa: e.target.value },
+                              })
                             }
                           />
                         </div>
@@ -1083,15 +1104,12 @@ export default function App() {
                             type="text"
                             className="clean-input"
                             placeholder="10 cyfr"
-                            value={activeDoc.data.odwolanie.Odwolujacy.nip}
+                            value={odwolanieData.Odwolujacy.nip}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                odwolanie: {
-                                  ...prev.odwolanie,
-                                  Odwolujacy: { ...prev.odwolanie.Odwolujacy, nip: e.target.value },
-                                },
-                              }))
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                Odwolujacy: { ...odwolanieData.Odwolujacy, nip: e.target.value },
+                              })
                             }
                           />
                         </div>
@@ -1103,15 +1121,12 @@ export default function App() {
                             type="text"
                             className="clean-input"
                             placeholder="Numer KRS"
-                            value={activeDoc.data.odwolanie.Odwolujacy.krs}
+                            value={odwolanieData.Odwolujacy.krs}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                odwolanie: {
-                                  ...prev.odwolanie,
-                                  Odwolujacy: { ...prev.odwolanie.Odwolujacy, krs: e.target.value },
-                                },
-                              }))
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                Odwolujacy: { ...odwolanieData.Odwolujacy, krs: e.target.value },
+                              })
                             }
                           />
                         </div>
@@ -1123,15 +1138,12 @@ export default function App() {
                             type="text"
                             className="clean-input"
                             placeholder="Numer REGON"
-                            value={activeDoc.data.odwolanie.Odwolujacy.regon}
+                            value={odwolanieData.Odwolujacy.regon}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                odwolanie: {
-                                  ...prev.odwolanie,
-                                  Odwolujacy: { ...prev.odwolanie.Odwolujacy, regon: e.target.value },
-                                },
-                              }))
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                Odwolujacy: { ...odwolanieData.Odwolujacy, regon: e.target.value },
+                              })
                             }
                           />
                         </div>
@@ -1141,15 +1153,12 @@ export default function App() {
                           <select
                             id="odw_pelnomocnik_check"
                             className="clean-select"
-                            value={activeDoc.data.odwolanie.Odwolujacy.przez_pelnomocnika}
+                            value={odwolanieData.Odwolujacy.przez_pelnomocnika}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                odwolanie: {
-                                  ...prev.odwolanie,
-                                  Odwolujacy: { ...prev.odwolanie.Odwolujacy, przez_pelnomocnika: e.target.value },
-                                },
-                              }))
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                Odwolujacy: { ...odwolanieData.Odwolujacy, przez_pelnomocnika: e.target.value },
+                              })
                             }
                           >
                             <option value="1">Tak (1)</option>
@@ -1157,7 +1166,7 @@ export default function App() {
                           </select>
                         </div>
 
-                        {activeDoc.data.odwolanie.Odwolujacy.przez_pelnomocnika === '1' && (
+                        {odwolanieData.Odwolujacy.przez_pelnomocnika === '1' && (
                           <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed var(--gov-border-light)' }}>
                             <div className="clean-row">
                               <label className="clean-label" htmlFor="odw_pel_imie">Pełnomocnik:</label>
@@ -1166,15 +1175,12 @@ export default function App() {
                                 type="text"
                                 className="clean-input"
                                 placeholder="Imię i nazwisko"
-                                value={activeDoc.data.odwolanie.Odwolujacy.pelnomocnik_imie_nazwisko}
+                                value={odwolanieData.Odwolujacy.pelnomocnik_imie_nazwisko}
                                 onChange={(e) =>
-                                  updateActiveData((prev) => ({
-                                    ...prev,
-                                    odwolanie: {
-                                      ...prev.odwolanie,
-                                      Odwolujacy: { ...prev.odwolanie.Odwolujacy, pelnomocnik_imie_nazwisko: e.target.value },
-                                    },
-                                  }))
+                                  setOdwolanieData({
+                                    ...odwolanieData,
+                                    Odwolujacy: { ...odwolanieData.Odwolujacy, pelnomocnik_imie_nazwisko: e.target.value },
+                                  })
                                 }
                               />
                             </div>
@@ -1186,15 +1192,12 @@ export default function App() {
                                 type="text"
                                 className="clean-input"
                                 placeholder="Nazwa kancelarii"
-                                value={activeDoc.data.odwolanie.Odwolujacy.pelnomocnik_nazwa}
+                                value={odwolanieData.Odwolujacy.pelnomocnik_nazwa}
                                 onChange={(e) =>
-                                  updateActiveData((prev) => ({
-                                    ...prev,
-                                    odwolanie: {
-                                      ...prev.odwolanie,
-                                      Odwolujacy: { ...prev.odwolanie.Odwolujacy, pelnomocnik_nazwa: e.target.value },
-                                    },
-                                  }))
+                                  setOdwolanieData({
+                                    ...odwolanieData,
+                                    Odwolujacy: { ...odwolanieData.Odwolujacy, pelnomocnik_nazwa: e.target.value },
+                                  })
                                 }
                               />
                             </div>
@@ -1206,15 +1209,12 @@ export default function App() {
                                 type="email"
                                 className="clean-input"
                                 placeholder="Adres e-mail"
-                                value={activeDoc.data.odwolanie.Odwolujacy.pelnomocnik_mail}
+                                value={odwolanieData.Odwolujacy.pelnomocnik_mail}
                                 onChange={(e) =>
-                                  updateActiveData((prev) => ({
-                                    ...prev,
-                                    odwolanie: {
-                                      ...prev.odwolanie,
-                                      Odwolujacy: { ...prev.odwolanie.Odwolujacy, pelnomocnik_mail: e.target.value },
-                                    },
-                                  }))
+                                  setOdwolanieData({
+                                    ...odwolanieData,
+                                    Odwolujacy: { ...odwolanieData.Odwolujacy, pelnomocnik_mail: e.target.value },
+                                  })
                                 }
                               />
                             </div>
@@ -1238,15 +1238,12 @@ export default function App() {
                             type="text"
                             className="clean-input"
                             placeholder="Pełna nazwa zamawiającego"
-                            value={activeDoc.data.odwolanie.Zamawiajacy.nazwa}
+                            value={odwolanieData.Zamawiajacy.nazwa}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                odwolanie: {
-                                  ...prev.odwolanie,
-                                  Zamawiajacy: { ...prev.odwolanie.Zamawiajacy, nazwa: e.target.value },
-                                },
-                              }))
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                Zamawiajacy: { ...odwolanieData.Zamawiajacy, nazwa: e.target.value },
+                              })
                             }
                           />
                         </div>
@@ -1258,15 +1255,12 @@ export default function App() {
                             type="text"
                             className="clean-input"
                             placeholder="NIP zamawiającego"
-                            value={activeDoc.data.odwolanie.Zamawiajacy.nip}
+                            value={odwolanieData.Zamawiajacy.nip}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                odwolanie: {
-                                  ...prev.odwolanie,
-                                  Zamawiajacy: { ...prev.odwolanie.Zamawiajacy, nip: e.target.value },
-                                },
-                              }))
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                Zamawiajacy: { ...odwolanieData.Zamawiajacy, nip: e.target.value },
+                              })
                             }
                           />
                         </div>
@@ -1278,15 +1272,12 @@ export default function App() {
                             type="text"
                             className="clean-input"
                             placeholder="REGON"
-                            value={activeDoc.data.odwolanie.Zamawiajacy.regon}
+                            value={odwolanieData.Zamawiajacy.regon}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                odwolanie: {
-                                  ...prev.odwolanie,
-                                  Zamawiajacy: { ...prev.odwolanie.Zamawiajacy, regon: e.target.value },
-                                },
-                              }))
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                Zamawiajacy: { ...odwolanieData.Zamawiajacy, regon: e.target.value },
+                              })
                             }
                           />
                         </div>
@@ -1298,15 +1289,12 @@ export default function App() {
                             type="text"
                             className="clean-input"
                             placeholder="Numer KRS (jeśli dotyczy)"
-                            value={activeDoc.data.odwolanie.Zamawiajacy.krs}
+                            value={odwolanieData.Zamawiajacy.krs}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                odwolanie: {
-                                  ...prev.odwolanie,
-                                  Zamawiajacy: { ...prev.odwolanie.Zamawiajacy, krs: e.target.value },
-                                },
-                              }))
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                Zamawiajacy: { ...odwolanieData.Zamawiajacy, krs: e.target.value },
+                              })
                             }
                           />
                         </div>
@@ -1316,15 +1304,12 @@ export default function App() {
                           <select
                             id="zam_prowadzacy"
                             className="clean-select"
-                            value={activeDoc.data.odwolanie.Zamawiajacy.prowadzacy_postepowanie}
+                            value={odwolanieData.Zamawiajacy.prowadzacy_postepowanie}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                odwolanie: {
-                                  ...prev.odwolanie,
-                                  Zamawiajacy: { ...prev.odwolanie.Zamawiajacy, prowadzacy_postepowanie: e.target.value },
-                                },
-                              }))
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                Zamawiajacy: { ...odwolanieData.Zamawiajacy, prowadzacy_postepowanie: e.target.value },
+                              })
                             }
                           >
                             <option value="null">Brak informacji / Pojedynczy</option>
@@ -1350,18 +1335,15 @@ export default function App() {
                             className="clean-textarea"
                             rows={2}
                             placeholder="Tytuł / przedmiot zamówienia"
-                            value={activeDoc.data.odwolanie.ZamowieniePubliczne.tytul}
+                            value={odwolanieData.ZamowieniePubliczne.tytul}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                odwolanie: {
-                                  ...prev.odwolanie,
-                                  ZamowieniePubliczne: {
-                                    ...prev.odwolanie.ZamowieniePubliczne,
-                                    tytul: e.target.value,
-                                  },
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                ZamowieniePubliczne: {
+                                  ...odwolanieData.ZamowieniePubliczne,
+                                  tytul: e.target.value,
                                 },
-                              }))
+                              })
                             }
                           ></textarea>
                         </div>
@@ -1373,18 +1355,15 @@ export default function App() {
                             type="text"
                             className="clean-input"
                             placeholder="np. ZP.039.2025"
-                            value={activeDoc.data.odwolanie.ZamowieniePubliczne.numer_postepowania}
+                            value={odwolanieData.ZamowieniePubliczne.numer_postepowania}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                odwolanie: {
-                                  ...prev.odwolanie,
-                                  ZamowieniePubliczne: {
-                                    ...prev.odwolanie.ZamowieniePubliczne,
-                                    numer_postepowania: e.target.value,
-                                  },
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                ZamowieniePubliczne: {
+                                  ...odwolanieData.ZamowieniePubliczne,
+                                  numer_postepowania: e.target.value,
                                 },
-                              }))
+                              })
                             }
                           />
                         </div>
@@ -1396,18 +1375,15 @@ export default function App() {
                             type="text"
                             className="clean-input"
                             placeholder="np. 2025/BZP 00123456/01"
-                            value={activeDoc.data.odwolanie.ZamowieniePubliczne.numer_bzp}
+                            value={odwolanieData.ZamowieniePubliczne.numer_bzp}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                odwolanie: {
-                                  ...prev.odwolanie,
-                                  ZamowieniePubliczne: {
-                                    ...prev.odwolanie.ZamowieniePubliczne,
-                                    numer_bzp: e.target.value,
-                                  },
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                ZamowieniePubliczne: {
+                                  ...odwolanieData.ZamowieniePubliczne,
+                                  numer_bzp: e.target.value,
                                 },
-                              }))
+                              })
                             }
                           />
                         </div>
@@ -1419,18 +1395,15 @@ export default function App() {
                             type="text"
                             className="clean-input"
                             placeholder="np. 641651-2025"
-                            value={activeDoc.data.odwolanie.ZamowieniePubliczne.numer_ted}
+                            value={odwolanieData.ZamowieniePubliczne.numer_ted}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                odwolanie: {
-                                  ...prev.odwolanie,
-                                  ZamowieniePubliczne: {
-                                    ...prev.odwolanie.ZamowieniePubliczne,
-                                    numer_ted: e.target.value,
-                                  },
+                              setOdwolanieData({
+                                ...odwolanieData,
+                                ZamowieniePubliczne: {
+                                  ...odwolanieData.ZamowieniePubliczne,
+                                  numer_ted: e.target.value,
                                 },
-                              }))
+                              })
                             }
                           />
                         </div>
@@ -1457,19 +1430,21 @@ export default function App() {
                           <select
                             id="moc_typ"
                             className="clean-select"
-                            value={activeDoc.data.pelnomocnictwo.mocodawca.typ}
-                            onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                pelnomocnictwo: {
-                                  ...prev.pelnomocnictwo,
-                                  mocodawca: {
-                                    ...prev.pelnomocnictwo.mocodawca,
-                                    typ: e.target.value as 'osoba_prawna' | 'osoba_fizyczna',
-                                  },
+                            value={pelnomocnictwoData.mocodawca.typ}
+                            onChange={(e) => {
+                              const nextTyp = e.target.value as 'osoba_prawna' | 'osoba_fizyczna';
+                              const nazwa = pelnomocnictwoData.mocodawca.nazwa || pelnomocnictwoData.mocodawca.imie_nazwisko;
+                              setPelnomocnictwoData({
+                                ...pelnomocnictwoData,
+                                mocodawca: {
+                                  ...pelnomocnictwoData.mocodawca,
+                                  typ: nextTyp,
+                                  // Zachowaj wpisaną nazwę przy zmianie typu — dane nie znikają.
+                                  nazwa,
+                                  imie_nazwisko: pelnomocnictwoData.mocodawca.imie_nazwisko || nazwa,
                                 },
-                              }))
-                            }
+                              });
+                            }}
                           >
                             <option value="osoba_prawna">Osoba prawna</option>
                             <option value="osoba_fizyczna">Osoba fizyczna</option>
@@ -1482,20 +1457,20 @@ export default function App() {
                             id="moc_nazwa"
                             type="text"
                             className="clean-input"
-                            placeholder={activeDoc.data.pelnomocnictwo.mocodawca.typ === 'osoba_prawna' ? 'Pełna nazwa mocodawcy' : 'Imię i nazwisko'}
-                            value={activeDoc.data.pelnomocnictwo.mocodawca.typ === 'osoba_prawna' ? activeDoc.data.pelnomocnictwo.mocodawca.nazwa : activeDoc.data.pelnomocnictwo.mocodawca.imie_nazwisko}
+                            placeholder={pelnomocnictwoData.mocodawca.typ === 'osoba_prawna' ? 'Pełna nazwa mocodawcy' : 'Imię i nazwisko'}
+                            value={pelnomocnictwoData.mocodawca.typ === 'osoba_prawna' ? pelnomocnictwoData.mocodawca.nazwa : pelnomocnictwoData.mocodawca.imie_nazwisko}
                             onChange={(e) => {
-                              const val = e.target.value;
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                pelnomocnictwo: {
-                                  ...prev.pelnomocnictwo,
-                                  mocodawca: {
-                                    ...prev.pelnomocnictwo.mocodawca,
-                                    ...(prev.pelnomocnictwo.mocodawca.typ === 'osoba_prawna' ? { nazwa: val } : { imie_nazwisko: val }),
-                                  },
-                                },
-                              }));
+                              if (pelnomocnictwoData.mocodawca.typ === 'osoba_prawna') {
+                                setPelnomocnictwoData({
+                                  ...pelnomocnictwoData,
+                                  mocodawca: { ...pelnomocnictwoData.mocodawca, nazwa: e.target.value },
+                                });
+                              } else {
+                                setPelnomocnictwoData({
+                                  ...pelnomocnictwoData,
+                                  mocodawca: { ...pelnomocnictwoData.mocodawca, imie_nazwisko: e.target.value },
+                                });
+                              }
                             }}
                           />
                         </div>
@@ -1507,15 +1482,12 @@ export default function App() {
                             type="text"
                             className="clean-input"
                             placeholder="Numer NIP"
-                            value={activeDoc.data.pelnomocnictwo.mocodawca.nip}
+                            value={pelnomocnictwoData.mocodawca.nip}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                pelnomocnictwo: {
-                                  ...prev.pelnomocnictwo,
-                                  mocodawca: { ...prev.pelnomocnictwo.mocodawca, nip: e.target.value },
-                                },
-                              }))
+                              setPelnomocnictwoData({
+                                ...pelnomocnictwoData,
+                                mocodawca: { ...pelnomocnictwoData.mocodawca, nip: e.target.value },
+                              })
                             }
                           />
                         </div>
@@ -1527,15 +1499,12 @@ export default function App() {
                             type="text"
                             className="clean-input"
                             placeholder="Numer KRS"
-                            value={activeDoc.data.pelnomocnictwo.mocodawca.krs}
+                            value={pelnomocnictwoData.mocodawca.krs}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                pelnomocnictwo: {
-                                  ...prev.pelnomocnictwo,
-                                  mocodawca: { ...prev.pelnomocnictwo.mocodawca, krs: e.target.value },
-                                },
-                              }))
+                              setPelnomocnictwoData({
+                                ...pelnomocnictwoData,
+                                mocodawca: { ...pelnomocnictwoData.mocodawca, krs: e.target.value },
+                              })
                             }
                           />
                         </div>
@@ -1547,18 +1516,15 @@ export default function App() {
                             type="text"
                             className="clean-input"
                             placeholder="Imię i nazwisko osoby podpisującej"
-                            value={activeDoc.data.pelnomocnictwo.mocodawca.podpisujacy_imie_nazwisko}
+                            value={pelnomocnictwoData.mocodawca.podpisujacy_imie_nazwisko}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                pelnomocnictwo: {
-                                  ...prev.pelnomocnictwo,
-                                  mocodawca: {
-                                    ...prev.pelnomocnictwo.mocodawca,
-                                    podpisujacy_imie_nazwisko: e.target.value,
-                                  },
+                              setPelnomocnictwoData({
+                                ...pelnomocnictwoData,
+                                mocodawca: {
+                                  ...pelnomocnictwoData.mocodawca,
+                                  podpisujacy_imie_nazwisko: e.target.value,
                                 },
-                              }))
+                              })
                             }
                           />
                         </div>
@@ -1580,15 +1546,12 @@ export default function App() {
                             type="text"
                             className="clean-input"
                             placeholder="w mianowniku"
-                            value={activeDoc.data.pelnomocnictwo.pelnomocnicy.imie_nazwisko}
+                            value={pelnomocnictwoData.pelnomocnicy.imie_nazwisko}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                pelnomocnictwo: {
-                                  ...prev.pelnomocnictwo,
-                                  pelnomocnicy: { ...prev.pelnomocnictwo.pelnomocnicy, imie_nazwisko: e.target.value },
-                                },
-                              }))
+                              setPelnomocnictwoData({
+                                ...pelnomocnictwoData,
+                                pelnomocnicy: { ...pelnomocnictwoData.pelnomocnicy, imie_nazwisko: e.target.value },
+                              })
                             }
                           />
                         </div>
@@ -1600,15 +1563,12 @@ export default function App() {
                             type="text"
                             className="clean-input"
                             placeholder="11 cyfr PESEL"
-                            value={activeDoc.data.pelnomocnictwo.pelnomocnicy.pesel}
+                            value={pelnomocnictwoData.pelnomocnicy.pesel}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                pelnomocnictwo: {
-                                  ...prev.pelnomocnictwo,
-                                  pelnomocnicy: { ...prev.pelnomocnictwo.pelnomocnicy, pesel: e.target.value },
-                                },
-                              }))
+                              setPelnomocnictwoData({
+                                ...pelnomocnictwoData,
+                                pelnomocnicy: { ...pelnomocnictwoData.pelnomocnicy, pesel: e.target.value },
+                              })
                             }
                           />
                         </div>
@@ -1637,15 +1597,12 @@ export default function App() {
                             type="text"
                             className="clean-input"
                             placeholder="dd.mm.rrrr"
-                            value={activeDoc.data.przelew.przelew_bankowy.data_operacji}
+                            value={przelewData.przelew_bankowy.data_operacji}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                przelew: {
-                                  ...prev.przelew,
-                                  przelew_bankowy: { ...prev.przelew.przelew_bankowy, data_operacji: e.target.value },
-                                },
-                              }))
+                              setPrzelewData({
+                                ...przelewData,
+                                przelew_bankowy: { ...przelewData.przelew_bankowy, data_operacji: e.target.value },
+                              })
                             }
                           />
                         </div>
@@ -1657,15 +1614,12 @@ export default function App() {
                             type="text"
                             className="clean-input"
                             placeholder="np. 10 000.00"
-                            value={activeDoc.data.przelew.przelew_bankowy.kwota}
+                            value={przelewData.przelew_bankowy.kwota}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                przelew: {
-                                  ...prev.przelew,
-                                  przelew_bankowy: { ...prev.przelew.przelew_bankowy, kwota: e.target.value },
-                                },
-                              }))
+                              setPrzelewData({
+                                ...przelewData,
+                                przelew_bankowy: { ...przelewData.przelew_bankowy, kwota: e.target.value },
+                              })
                             }
                           />
                         </div>
@@ -1677,15 +1631,12 @@ export default function App() {
                             type="text"
                             className="clean-input"
                             placeholder="60 1010 1010 0081 3622 3100 0000"
-                            value={activeDoc.data.przelew.przelew_bankowy.na_rachunek}
+                            value={przelewData.przelew_bankowy.na_rachunek}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                przelew: {
-                                  ...prev.przelew,
-                                  przelew_bankowy: { ...prev.przelew.przelew_bankowy, na_rachunek: e.target.value },
-                                },
-                              }))
+                              setPrzelewData({
+                                ...przelewData,
+                                przelew_bankowy: { ...przelewData.przelew_bankowy, na_rachunek: e.target.value },
+                              })
                             }
                           />
                         </div>
@@ -1697,15 +1648,12 @@ export default function App() {
                             type="text"
                             className="clean-input"
                             placeholder="26 cyfr nadawcy"
-                            value={activeDoc.data.przelew.przelew_bankowy.z_rachunku}
+                            value={przelewData.przelew_bankowy.z_rachunku}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                przelew: {
-                                  ...prev.przelew,
-                                  przelew_bankowy: { ...prev.przelew.przelew_bankowy, z_rachunku: e.target.value },
-                                },
-                              }))
+                              setPrzelewData({
+                                ...przelewData,
+                                przelew_bankowy: { ...przelewData.przelew_bankowy, z_rachunku: e.target.value },
+                              })
                             }
                           />
                         </div>
@@ -1717,15 +1665,12 @@ export default function App() {
                             className="clean-textarea"
                             rows={2}
                             placeholder="Tytuł przelewu"
-                            value={activeDoc.data.przelew.przelew_bankowy.tytul}
+                            value={przelewData.przelew_bankowy.tytul}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                przelew: {
-                                  ...prev.przelew,
-                                  przelew_bankowy: { ...prev.przelew.przelew_bankowy, tytul: e.target.value },
-                                },
-                              }))
+                              setPrzelewData({
+                                ...przelewData,
+                                przelew_bankowy: { ...przelewData.przelew_bankowy, tytul: e.target.value },
+                              })
                             }
                           ></textarea>
                         </div>
@@ -1737,15 +1682,12 @@ export default function App() {
                             type="text"
                             className="clean-input"
                             placeholder="opcjonalny numer transakcji"
-                            value={activeDoc.data.przelew.przelew_bankowy.numer_transakcji}
+                            value={przelewData.przelew_bankowy.numer_transakcji}
                             onChange={(e) =>
-                              updateActiveData((prev) => ({
-                                ...prev,
-                                przelew: {
-                                  ...prev.przelew,
-                                  przelew_bankowy: { ...prev.przelew.przelew_bankowy, numer_transakcji: e.target.value },
-                                },
-                              }))
+                              setPrzelewData({
+                                ...przelewData,
+                                przelew_bankowy: { ...przelewData.przelew_bankowy, numer_transakcji: e.target.value },
+                              })
                             }
                           />
                         </div>
@@ -1753,41 +1695,31 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* ======================================================== */}
-                  {/* DOKUMENT: NIEROZPOZNANY TYP                              */}
-                  {/* ======================================================== */}
-                  {activeDoc.doc_class === 'nierozpoznany' && (
-                    <div className="clean-form-section">
-                      <div className="clean-section-header">
-                        <h3 className="clean-section-title">
-                          Nierozpoznany typ dokumentu
-                        </h3>
-                        <span className="gov-badge" style={{ borderColor: '#6c757d', color: '#6c757d' }}>
-                          Brak szablonu
-                        </span>
-                      </div>
-                      <div
-                        style={{
-                          padding: '24px 16px',
-                          textAlign: 'center',
-                          backgroundColor: '#f8fafc',
-                          borderRadius: '4px',
-                          border: '1px dashed #cbd5e1',
-                          color: 'var(--gov-text-muted)',
-                        }}
-                      >
-                        <p style={{ margin: '0 0 8px', fontSize: '0.9375rem', fontWeight: 600 }}>
-                          Ten dokument został oznaczony jako nierozpoznany typ.
-                        </p>
-                        <p style={{ margin: 0, fontSize: '0.8125rem' }}>
-                          Wybierz typ powyżej (odwołanie, pełnomocnictwo lub potwierdzenie przelewu), aby wyświetlić i edytować odpowiednie kategorie pól.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
                   {/* Dolny pasek akcji formularza */}
-                  <div style={{ marginTop: '20px', paddingTop: '14px', borderTop: '1px solid var(--gov-border-light)', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end' }}>
+                  <div style={{ marginTop: '20px', paddingTop: '14px', borderTop: '1px solid var(--gov-border-light)', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                      <button type="button" className="gov-btn-process" onClick={handleSaveData}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="16" height="16">
+                          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                          <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                          <polyline points="7 3 7 8 15 8"></polyline>
+                        </svg>
+                        <span>Zapisz</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="gov-btn-secondary"
+                        onClick={saveAll}
+                        title="Zapisz odwołanie, pełnomocnictwo i przelew jednym kliknięciem"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="16" height="16">
+                          <polyline points="1 13 6 18 15 7"></polyline>
+                          <polyline points="9 13 14 18 23 7"></polyline>
+                        </svg>
+                        <span>Zapisz wszystko</span>
+                      </button>
+                    </div>
+
                     {currentDocIndex < docSlots.length - 1 ? (
                       <button type="button" className="gov-btn-primary" onClick={goToNextDoc} style={{ maxWidth: '200px' }}>
                         <span>Następny plik →</span>
@@ -1810,88 +1742,31 @@ export default function App() {
         )}
 
         {/* ======================================================== */}
-        {/* WIDOK 3: EKRAN GOTOWE / PODSUMOWANIE (W STYLU WIDOKU 1) */}
+        {/* WIDOK 4: GOTOWE                                           */}
         {/* ======================================================== */}
         {stage === 'done' && (
           <div className="gov-container">
-            <div className="service-header">
-              <h1 className="service-title">Gotowe! Rozpoczęto pobieranie paczki folderów JSON</h1>
-            </div>
-
-            <p className="service-description">
-              Paczka <strong>{selectedFolder?.name || 'odwolania2json'}.zip</strong> zawierająca podfoldery z plikami <strong>.json</strong> została pomyślnie wygenerowana i pobrana na Twój komputer.
-              Możesz teraz pobrać ją ponownie, wrócić do edycji danych lub przesłać kolejną paczkę dokumentów.
-            </p>
-
-            <section style={{ backgroundColor: '#ffffff', padding: '24px 0 12px 0' }}>
-              <div>
-                <h2 style={{ fontSize: '1.0625rem', fontWeight: 700, margin: '0 0 14px', color: 'var(--gov-text)' }}>
-                  Ilości przetworzonych plików:
-                </h2>
-                <div style={{ maxWidth: '420px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9375rem', borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: '6px' }}>
-                    <span style={{ color: 'var(--gov-text-muted)' }}>Odwołanie do KIO:</span>
-                    <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--gov-text)' }}>
-                      {docSlots.filter(s => s.doc_class === 'odwolanie' || s.title.toLowerCase().includes('odwoł')).length}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9375rem', borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: '6px' }}>
-                    <span style={{ color: 'var(--gov-text-muted)' }}>Pełnomocnictwo:</span>
-                    <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--gov-text)' }}>
-                      {docSlots.filter(s => s.doc_class === 'pelnomocnictwo' || s.title.toLowerCase().includes('pełnomoc')).length}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9375rem', borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: '6px' }}>
-                    <span style={{ color: 'var(--gov-text-muted)' }}>Potwierdzenie przelewu:</span>
-                    <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--gov-text)' }}>
-                      {docSlots.filter(s => s.doc_class === 'przelew' || s.title.toLowerCase().includes('przelew')).length}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9375rem', paddingTop: '2px' }}>
-                    <span style={{ color: 'var(--gov-text-muted)' }}>Nierozpoznany typ:</span>
-                    <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--gov-text)' }}>
-                      {docSlots.filter(s => s.doc_class === 'nierozpoznany' || s.title.toLowerCase().includes('nierozpoznany')).length}
-                    </span>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '28px' }}>
-                  <button
-                    type="button"
-                    className="gov-btn-process"
-                    onClick={() => {
-                      setStage('upload');
-                      setSelectedFolder(null);
-                      if (folderInputRef.current) folderInputRef.current.value = '';
-                    }}
-                  >
-                    <span>Prześlij kolejne pliki</span>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="18" height="18">
-                      <polyline points="9 18 15 12 9 6" />
-                    </svg>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="gov-btn-secondary"
-                    onClick={downloadAllJsonArchive}
-                  >
-                    Pobierz ponownie foldery JSON
-                  </button>
-
-                  <button
-                    type="button"
-                    className="gov-btn-secondary"
-                    onClick={() => setStage('splitscreen')}
-                  >
-                    Wróć do edycji
-                  </button>
-                </div>
-              </div>
-            </section>
-
-            <div className="gov-info-note">
-              <strong>Informacja:</strong> Wszelkie wprowadzone poprawki w formularzach zostały uwzględnione w wygenerowanym i pobranym pliku JSON.
+            <div className="gov-loading-card" role="status" aria-live="polite"
+                 style={{ borderLeftColor: 'var(--gov-success)', textAlign: 'center', padding: '48px 28px' }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--gov-success)" strokeWidth="2"
+                   width="64" height="64" style={{ marginBottom: '16px' }}>
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="8 12 11 15 16 9"></polyline>
+              </svg>
+              <h1 className="service-title" style={{ borderLeft: 'none', paddingLeft: 0, justifyContent: 'center' }}>
+                Gotowe!
+              </h1>
+              <p style={{ margin: '16px auto 8px', maxWidth: '560px', fontSize: '1.0625rem', color: 'var(--gov-text-muted)' }}>
+                Wszystkie dokumenty zostały zapisane w bazie danych, a plik
+                <strong> odwolania2json.json</strong> został pobrany na Twój komputer.
+              </p>
+              <p style={{ margin: '0 auto 28px', maxWidth: '560px', fontSize: '0.9375rem', color: 'var(--gov-text-muted)' }}>
+                Dane poprawione przez Ciebie trafiły też do magazynu poprawek —
+                będą użyte do douczania modelu odczytu.
+              </p>
+              <button type="button" className="gov-btn-process" onClick={resetToMenu}>
+                Wróć do menu — wczytaj nowy .zip
+              </button>
             </div>
           </div>
         )}
@@ -1912,6 +1787,7 @@ export default function App() {
           }}
           role="dialog"
           aria-modal="true"
+          aria-labelledby="json-modal-title"
         >
           <div
             style={{
@@ -1936,12 +1812,14 @@ export default function App() {
                 alignItems: 'center',
               }}
             >
-              <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 900 }}>
+              <h3 id="json-modal-title" style={{ margin: 0, fontSize: '1.125rem', fontWeight: 900 }}>
                 Kanoniczny JSON: {activeDoc.doc_class}.json
               </h3>
               <button
                 type="button"
                 className="a11y-btn"
+                autoFocus
+                aria-label="Zamknij podgląd JSON"
                 onClick={() => setShowJsonModal(false)}
                 style={{ fontSize: '0.875rem', padding: '3px 8px' }}
               >

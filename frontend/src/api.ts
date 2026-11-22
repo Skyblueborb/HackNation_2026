@@ -10,8 +10,8 @@ const BASE = '/api';
 
 export interface StoredDocument {
   document_id: string;
-  client_doc_id?: string | null;
-  doc_class: 'odwolanie' | 'pelnomocnictwo' | 'przelew' | 'nierozpoznany';
+  client_doc_id: string | null;
+  doc_class: 'odwolanie' | 'pelnomocnictwo' | 'przelew';
   source_name: string | null;
   canonical_json: any;
   predicted_json: any;
@@ -60,8 +60,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 /** Zapisz wynik (pierwszy raz) albo poprawkę (gdy JSON się zmienił). */
 export function ingestDocument(payload: {
   client_token: string;
-  client_doc_id?: string;   // jeden plik z ZIP-a = jeden dokument
-  doc_class: 'odwolanie' | 'pelnomocnictwo' | 'przelew' | 'nierozpoznany';
+  client_doc_id: string;   // jeden plik z ZIP-a = jeden dokument
+  doc_class: 'odwolanie' | 'pelnomocnictwo' | 'przelew';
   canonical_json: unknown;
   source_name?: string;
   provenance_json?: unknown;
