@@ -55,6 +55,7 @@ class DocumentCase:
     class_id: str
     corpus: str
     has_text_layer: bool
+    gold_stem: str = ""
 
 
 def _specs() -> dict[str, Any]:
@@ -80,13 +81,55 @@ def discover_sets(data_root: Path, corpus: str) -> list[str]:
     return set_ids
 
 
+def _gold_stem_for_class(class_id: str) -> str:
+    return next(spec.gold_stem for spec in _specs().values() if spec.id == class_id)
+
+
+_GOLD_KEY_TO_CLASS = {
+    "OdwolanieKIO": "odwolanie",
+    "mocodawca": "pelnomocnictwo",
+    "przelew_bankowy": "potwierdzenie_przelewu",
+}
+
+
+def _case_from_sidecar(pdf: Path) -> DocumentCase:
+    gold = pdf.with_suffix(".json")
+    if not gold.is_file():
+        raise ValueError(
+            f"PDF outside data_root needs a sidecar gold JSON: {gold}"
+        )
+    try:
+        payload = json.loads(gold.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"sidecar gold is not valid JSON: {gold}") from exc
+    class_id = next(
+        (cid for key, cid in _GOLD_KEY_TO_CLASS.items() if key in payload),
+        None,
+    )
+    if class_id is None:
+        raise ValueError(f"cannot infer class from sidecar gold: {gold}")
+    gold_stem = next(
+        spec.gold_stem for spec in _specs().values() if spec.id == class_id
+    )
+    has_text = any(page.text.strip() for page in extract_pages(pdf, "pdfplumber"))
+    return DocumentCase(
+        set_id=f"local_{pdf.stem}",
+        pdf=pdf,
+        gold=gold,
+        class_id=class_id,
+        corpus="local",
+        has_text_layer=has_text,
+        gold_stem=gold_stem,
+    )
+
+
 def _case_for_pdf(pdf: Path, dane: Path) -> DocumentCase:
     if not pdf.is_file():
         raise ValueError(f"PDF not found: {pdf}")
     try:
         rel = pdf.resolve().relative_to(dane.resolve())
-    except ValueError as exc:
-        raise ValueError(f"PDF outside data_root: {pdf}") from exc
+    except ValueError:
+        return _case_from_sidecar(pdf)
     parts = rel.parts
     if parts[0] == "skany":
         if len(parts) != 4 or parts[1] not in _SCAN_DIR_TO_CLASS:
@@ -99,6 +142,7 @@ def _case_for_pdf(pdf: Path, dane: Path) -> DocumentCase:
             class_id=_SCAN_DIR_TO_CLASS[dir_name],
             corpus="skany",
             has_text_layer=False,
+            gold_stem=_gold_stem_for_class(_SCAN_DIR_TO_CLASS[dir_name]),
         )
     if len(parts) == 2 and parts[0].startswith("przyklad_"):
         for spec in _specs().values():
@@ -110,6 +154,7 @@ def _case_for_pdf(pdf: Path, dane: Path) -> DocumentCase:
                     class_id=spec.id,
                     corpus="przyklad",
                     has_text_layer=True,
+                    gold_stem=spec.gold_stem,
                 )
     raise ValueError(f"unrecognised PDF path under data_root: {pdf}")
 
@@ -192,7 +237,7 @@ def _ocr_proxy(case: DocumentCase, texts: list[str]) -> dict[str, Any]:
 def _write_prediction(case: DocumentCase, combo_dir: Path, prediction: dict[str, Any] | None) -> None:
     if prediction is None:
         return
-    path = combo_dir / "predictions" / case.set_id / case.gold.name
+    path = combo_dir / "predictions" / case.set_id / _gold_filename(case)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(prediction, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -341,6 +386,10 @@ def aggregate_speed(rows: list[dict[str, Any]], stages: list[str]) -> dict[str, 
     return out
 
 
+def _gold_filename(case: DocumentCase) -> str:
+    return f"{case.gold_stem or case.gold.stem}.json"
+
+
 def _pretty_json(path: Path) -> str:
     if not path.exists():
         return "(missing)"
@@ -458,7 +507,7 @@ def score_combo(
         if not case.gold.exists():
             skipped.append(case.set_id)
             continue
-        target = score_gold / case.set_id / case.gold.name
+        target = score_gold / case.set_id / _gold_filename(case)
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(case.gold, target)
 
@@ -541,7 +590,7 @@ def score_combo(
     )
     details: list[dict[str, Any]] = []
     for case in cases:
-        rel = f"{case.set_id}/{case.gold.name}"
+        rel = f"{case.set_id}/{_gold_filename(case)}"
         counts = result.per_file.get(rel, {}).get("exact")
         case_mismatches = [m for m in result.mismatches if m["file"] == rel]
         if counts is not None:
@@ -558,7 +607,7 @@ def score_combo(
             if ocr_path.exists()
             else "(no OCR artifact for this document)"
         )
-        pred_path = combo_dir / "predictions" / case.set_id / case.gold.name
+        pred_path = combo_dir / "predictions" / case.set_id / _gold_filename(case)
         detail = {
             "file": rel,
             "classification": classification,

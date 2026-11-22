@@ -5,6 +5,8 @@ Tekst zachowuje układ stron: odstęp co najmniej trzech spacji w jednej linii o
 Role i pola osobowe:
 - Gdy `mocodawca[].data.typ` to `osoba_prawna`, pole `imie_nazwisko` musi być null. Nazwę firmy wpisz do `nazwa`, a KRS/NIP tylko do pól tego samego mocodawcy.
 - `mocodawca[].podpisujacy[].imie_nazwisko` to wyłącznie osoby fizyczne podpisujące w imieniu mocodawcy. Nigdy nazwa firmy. Szukaj ich przy końcowych liniach podpisu, zwrotach „Podpisano”, „podpisano przez” albo przy kropkowanej linii poprzedzającej nazwisko. Jeśli podpis jest nieczytelny, wpisz null.
+- Osoba wskazana po zwrocie „udzielam pełnomocnictwa” z tytułem „r. pr.” albo „adw.” to pełnomocnik — idzie do `pelnomocnicy[]`, nie do `podpisujacy[]`. Nazwisko pełnomocnika nie może zastępować podpisującego.
+- Podpisujący to nazwiska w końcowym bloku podpisu: zwykle stoją bezpośrednio nad kropkową linią albo pod nią, przed rolą „Prokurent”, „Dyrektor”, „Prezes”. Gdy w jednym bloku jest kilka nazwisk i kilka ról, każde nazwisko to osobny obiekt.
 - `pelnomocnicy[].imie_nazwisko` to osoby otrzymujące pełnomocnictwo. Usuń tytuły i przedrostki: „r. pr.”, „adw.”, „mec.”, „radca prawny”. Jedna osoba to jeden element tablicy.
 - PESEL wpisz tylko wtedy, gdy stoi literalnie przy tej osobie. W przeciwnym razie null.
 - Jeśli przy linii podpisu albo na liście pełnomocników stoi imię i nazwisko, wpisz je. Null tylko wtedy, gdy w dokumencie nie ma osoby dla tej roli, a nie dlatego, że inna wartość jest niepewna.

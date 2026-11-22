@@ -36,6 +36,68 @@ _TITLE_RE = re.compile(
     r"^(?:(?:r\.\s*pr\.|radca\s+prawny|adw\.|mec\.|mgr|dr)\.?\s*)+",
     re.IGNORECASE,
 )
+_DOTS_RE = re.compile(r"^\.{8,}$")
+_SIGN_ROLES = (
+    "Wiceprezes",
+    "Członek Zarządu",
+    "Główny Księgowy",
+    "Osoba upoważniona",
+    "Radca prawny",
+    "Prokurent",
+    "Dyrektor",
+    "Prezes",
+    "Kierownik",
+    "Adwokat",
+    "Pełnomocnik",
+)
+
+
+def _parse_sign_roles(line: str) -> list[str]:
+    rest = line.strip()
+    roles: list[str] = []
+    while rest:
+        matched = False
+        for role in _SIGN_ROLES:
+            if rest.lower().startswith(role.lower()):
+                roles.append(role)
+                rest = rest[len(role) :].strip(" ,;")
+                matched = True
+                break
+        if not matched:
+            return []
+    return roles
+
+
+def _signature_names(text: str) -> list[str]:
+    lines = [line.strip() for line in text.splitlines()]
+    names: list[str] = []
+    for index in range(len(lines) - 2):
+        if not _DOTS_RE.match(lines[index]):
+            continue
+        roles = _parse_sign_roles(lines[index + 2])
+        if not roles:
+            continue
+        tokens = lines[index + 1].split()
+        if len(tokens) == 2 * len(roles):
+            names.extend(
+                " ".join(tokens[offset : offset + 2])
+                for offset in range(0, len(tokens), 2)
+            )
+        elif len(roles) == 1 and len(tokens) == 2:
+            names.append(lines[index + 1].strip())
+    return names
+
+
+def repair_signature_names(obj: dict[str, Any], text: str) -> dict[str, Any]:
+    """Fill signatory names from the signature block when the layout is clear."""
+    mocodawcy = obj.get("mocodawca")
+    if not isinstance(mocodawcy, list) or len(mocodawcy) != 1:
+        return obj
+    names = _signature_names(text)
+    if not names:
+        return obj
+    mocodawcy[0]["podpisujacy"] = [{"imie_nazwisko": name} for name in names]
+    return obj
 
 
 def _person_names(value: Any) -> list[str] | None:
@@ -346,6 +408,7 @@ def extract_document(
             mapped = map_polish_labels(parsed, active_schema)
             obj = model.model_validate(coerce_list_fields(mapped, active_schema)).model_dump()
             obj = split_combined_names(obj)
+            obj = repair_signature_names(obj, text)
         except Exception as exc:
             result.error = f"{type(exc).__name__}: {exc}"[:1500]
             if attempt < retries:

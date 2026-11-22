@@ -73,6 +73,45 @@ def test_select_documents_explicit_pdf_maps_to_set_and_class(tmp_path):
     assert cases[0].gold.name == "odwolanie.json"
 
 
+def test_select_documents_accepts_pdf_with_sidecar_gold(tmp_path):
+    root = _make_data_root(tmp_path, n_sets=1)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    pdf = outside / "abc123.pdf"
+    pdf.write_bytes(_pdf_bytes())
+    pdf.with_suffix(".json").write_text(
+        '{"OdwolanieKIO": {}}', encoding="utf-8"
+    )
+    cases = mc.select_documents(
+        root, corpus="przyklad", count=5, random_sample=False, seed=42,
+        sets=None, pdf_paths=[pdf],
+    )
+    assert cases[0].gold_stem == "odwolanie"
+    assert cases[0].class_id == "odwolanie"
+    assert cases[0].set_id == "local_abc123"
+    assert cases[0].corpus == "local"
+
+
+def test_score_combo_scores_sidecar_case_with_expected_gold_stem(tmp_path):
+    root = _make_data_root(tmp_path, n_sets=1)
+    outside = tmp_path / "outside2"
+    outside.mkdir()
+    pdf = outside / "xyz789.pdf"
+    pdf.write_bytes(_pdf_bytes())
+    gold = pdf.with_suffix(".json")
+    gold.write_text('{"OdwolanieKIO": {}}', encoding="utf-8")
+    case = mc.select_documents(
+        root, corpus="przyklad", count=5, random_sample=False, seed=42,
+        sets=None, pdf_paths=[pdf],
+    )[0]
+    combo = tmp_path / "combo"
+    pred_dir = combo / "predictions" / case.set_id
+    pred_dir.mkdir(parents=True)
+    (pred_dir / "odwolanie.json").write_text("{}", encoding="utf-8")
+    out = mc.score_combo([case], combo, mc._specs(), [case.set_id])
+    assert out["n_files_evaluated"] == 1
+
+
 def test_select_documents_rejects_pdf_outside_data_root(tmp_path):
     root = _make_data_root(tmp_path, n_sets=1)
     stray = tmp_path / "stray.pdf"

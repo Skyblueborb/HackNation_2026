@@ -20,7 +20,7 @@ from lab.cache import read_cached, write_cache
 from lab.eval.metrics import evaluate_run
 from lab.llm.client import LLMClient
 from lab.llm.config import load_experiment, load_models
-from lab.llm.pipeline import run_pipeline, split_combined_names
+from lab.llm.pipeline import repair_signature_names, run_pipeline, split_combined_names
 from lab.llm.prompts import PromptSet
 from lab.llm.text_prep import prepare_ocr_text
 from o2jcore.spec.loader import load_all_classes
@@ -141,6 +141,45 @@ def test_split_combined_names_expands_list_entries():
         "Piotr Zalewski",
         "Anna Nowak",
     ]
+
+
+def test_repair_signature_names_replaces_wrong_signatory():
+    text = (
+        "udzielam pełnomocnictwa r. pr. Jolanta Szulc\n"
+        "............................................\n"
+        "Bartosz Zajkowski Oliwia Gajewski\n"
+        "Prokurent Dyrektor\n"
+    )
+    obj = {"mocodawca": [{"podpisujacy": [{"imie_nazwisko": "Jolanta Szulc"}]}]}
+    out = repair_signature_names(obj, text)
+    assert [p["imie_nazwisko"] for p in out["mocodawca"][0]["podpisujacy"]] == [
+        "Bartosz Zajkowski",
+        "Oliwia Gajewski",
+    ]
+
+
+def test_repair_signature_names_skips_multiple_mocodawcy():
+    text = (
+        "............................................\n"
+        "Oliwia Gajewski\n"
+        "Prokurent\n"
+    )
+    obj = {
+        "mocodawca": [
+            {"podpisujacy": [{"imie_nazwisko": "Stary Jeden"}]},
+            {"podpisujacy": [{"imie_nazwisko": "Stary Dwa"}]},
+        ]
+    }
+    out = repair_signature_names(obj, text)
+    assert [p["imie_nazwisko"] for p in out["mocodawca"][0]["podpisujacy"]] == [
+        "Stary Jeden"
+    ]
+
+
+def test_repair_signature_names_no_change_without_signature_block():
+    obj = {"mocodawca": [{"podpisujacy": [{"imie_nazwisko": "Anna Nowak"}]}]}
+    out = repair_signature_names(obj, "brak bloku podpisu\n")
+    assert out["mocodawca"][0]["podpisujacy"][0]["imie_nazwisko"] == "Anna Nowak"
 
 
 def test_split_combined_names_keeps_first_name_in_single_object():

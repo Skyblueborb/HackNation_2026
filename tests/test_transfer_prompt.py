@@ -64,6 +64,14 @@ def test_odwolanie_prompt_excludes_opz_from_reasons() -> None:
     assert "OPZ w treści zarzutów" in template
 
 
+def test_odwolanie_prompt_explains_zaniechanie() -> None:
+    template = (REPO_ROOT / "configs/prompts/extract_odwolanie.j2").read_text(
+        encoding="utf-8"
+    )
+    assert "zaniechanie" in template.lower()
+    assert "nie wykluczył" in template
+
+
 def test_odwolanie_prompt_lists_every_enum_label() -> None:
     enum = (REPO_ROOT / "configs/enums/czynnosc_powod.yaml").read_text(
         encoding="utf-8"
@@ -104,6 +112,8 @@ def test_pelnomocnictwo_prompt_keeps_company_out_of_person_name() -> None:
         "r. pr.",
         "Podpisano",
         "Null tylko wtedy",
+        "nie do `podpisujacy[]`",
+        "kropkową linią",
     ):
         assert phrase in template
 
