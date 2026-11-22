@@ -76,9 +76,39 @@ uv run ocr-pdf2json plik.pdf \
   --out-dir output
 ```
 
-Uwaga: backend nie ma env-driven remote OCR clienta. Jeśli chcesz zostawić
-backend na Macu, a OCR na L4, trzeba dodać osobny `WEB_OCR_BACKEND=remote`
-z klientem `/analyze` — obecnie `cuda` ładuje model lokalnie w procesie backendu.
+### Backend lokalnie na Macu, OCR + LLM na L4
+
+Backend może zostać na Macu i przekazać cały plik do zdalnego serwisu
+`ocr-api`. Serwis na L4 robi OCR i LLM, więc lokalny proces nie ładuje wag
+i nie potrzebuje LLM servera.
+
+**Na L4** — postępuj według `docs/gpu-server/README.md`, w tym LLM na
+`localhost:8082`, a `ocr-api serve` z `OCR_LLM_PROCESSOR` i
+`OCR_LLM_MODEL=qwen3-8b-l4`. Wystaw tylko port `8000` z `API_KEY`.
+
+**Na Macu:**
+
+```bash
+API_TOKEN=<token> \
+WEB_OCR_BACKEND=remote \
+OCR_SERVICE_URL=http://<L4-IP>:8000 \
+OCR_SERVICE_KEY=<API_KEY> \
+O2J_DB_PATH=work/o2j.db \
+uv run --extra serve uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+
+Zostaw `OCR_LLM_PROCESSOR` puste — LLM jest już po stronie L4. Backend
+przesyła PDF do `POST <OCR_SERVICE_URL>/analyze` z nagłówkiem `X-API-Key`
+i przekazuje zwrócone `pages` oraz `llm` do swojego `SQLite`/API.
+
+Frontend zostaje domyślny (`O2J_API_TARGET` nie jest potrzebny), bo backend
+jest lokalny:
+
+```bash
+cd frontend && npm run dev
+```
+
+`OCR_REMOTE_TIMEOUT` (domyślnie `900` s) kontroluje timeout żądania.
 
 ## Zmienne środowiskowe
 
