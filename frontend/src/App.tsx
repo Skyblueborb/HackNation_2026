@@ -30,6 +30,7 @@ const CZYNNOSC_POWODY = [
   { id: '9', label: '9 - Decyzja o unieważnieniu postępowania' },
   { id: '10', label: '10 - Zaniechanie unieważnienia postępowania' },
   { id: '11', label: '11 - Opis przedmiotu zamówienia (OPZ)' },
+  { id: '12', label: '12 - Projektowane postanowienia umowy'}
 ];
 
 export default function App() {
