@@ -120,7 +120,28 @@ def test_gold_side_extra_keys_are_not_false_positives(tmp_path):
 
     for mode in ("exact", "fuzzy"):
         c = result.overall[mode]
-        assert (c.tp, c.fp, c.fn) == (1, 0, 0)
+        # No penalty: the pred is identical to gold.
+        assert (c.fp, c.fn) == (0, 0)
+        # A gold-side extra is scored like any other gold field, so matching
+        # it earns credit -- "a" and "gold_only" both count. The symmetric
+        # case is covered below: missing one costs a FN, so withholding the
+        # TP here would let a document only lose points, never earn them.
+        assert c.tp == 2
+
+
+def test_gold_side_extra_key_missing_from_pred_is_a_false_negative(tmp_path):
+    # The counterpart that makes the TP above fair: a gold-side extra is a
+    # real field in both directions.
+    gold, pred = _gold_pred_dirs(tmp_path, pred_obj={"a": "x"})
+    (gold / "przyklad_01" / "tiny.json").write_text(
+        json.dumps({"a": "x", "gold_only": "junk"}), encoding="utf-8"
+    )
+
+    result = evaluate_run(pred, gold, _tiny_specs(), set_ids=["przyklad_01"])
+
+    for mode in ("exact", "fuzzy"):
+        c = result.overall[mode]
+        assert (c.tp, c.fp, c.fn) == (1, 0, 1)
 
 
 def test_only_pred_only_extra_keys_are_false_positives(tmp_path):

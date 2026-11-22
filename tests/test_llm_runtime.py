@@ -22,12 +22,15 @@ def test_build_local_config_defaults_to_local_profile():
 
 
 def test_build_local_config_cpu_keeps_other_flags():
+    default = build_local_config()
     config = build_local_config(cpu=True)
+
     assert "-ngl 0" in config.server_flags
     assert "-ngl 99" not in config.server_flags
-    assert "-c 8192" in config.server_flags
-    assert "--jinja" in config.server_flags
-    assert "--parallel 1" in config.server_flags
+    # --cpu may swap the -ngl flag and nothing else. Comparing against the
+    # profile instead of literal flag values keeps this test honest when
+    # models.yaml tunes the context size, which has already happened twice.
+    assert config.server_flags == default.server_flags.replace("-ngl 99", "-ngl 0")
 
 
 def test_build_local_config_port_overrides_url():
