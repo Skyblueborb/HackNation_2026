@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Start serwerów na wynajętym GPU -- dokładnie te komendy, które odpalaliśmy
 # ręcznie w tmux: lab serve (LLM) + ocr-api serve (OCR), bez Dockera.
+# Klient dostaje wyłącznie adres IPv4 i endpoint http://.
 #
 #   bash scripts/gpu-server-bootstrap.sh
 
@@ -23,7 +24,14 @@ OCR_PID=$!
 trap 'kill "$LLM_PID" "$OCR_PID" 2>/dev/null || true' EXIT INT TERM
 
 until curl -fsS -o /dev/null http://localhost:8000/health; do sleep 2; done
-IP="$(curl -fsS ifconfig.me || hostname -I | awk '{print $1}')"
+IP="$(curl -4 -fsS https://api.ipify.org 2>/dev/null \
+  || curl -4 -fsS https://ipv4.icanhazip.com 2>/dev/null \
+  || hostname -I | awk '{for (i = 1; i <= NF; i++) if ($i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) {print $i; exit}}')"
+IP="$(printf '%s' "$IP" | tr -d '[:space:]')"
+if [[ ! "$IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "ERROR: could not determine a public IPv4 address" >&2
+  exit 1
+fi
 echo
 echo "=== terminal 1 — backend (na kliencie): ============================="
 echo "bash scripts/connect-gpu-backend.sh ${IP}:8000 ${API_KEY} ${BACKEND_TOKEN}"

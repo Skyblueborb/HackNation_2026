@@ -98,8 +98,9 @@ bash scripts/gpu-server-bootstrap.sh
 
 Skrypt startuje `lab serve --model qwen3-8b-l4` (port 8082, tylko localhost)
 i `ocr-api serve --host 0.0.0.0 --port 8000` (OCR obrazowy, model
-`lightonai/LightOnOCR-3-4B` na CUDA), czeka aż `/health` odpowie, i na końcu
-drukuje gotową komendę do wklejenia na klienta:
+`lightonai/LightOnOCR-3-4B` na CUDA), czeka aż `/health` odpowie, wykrywa
+publiczny adres **IPv4** (`curl -4`) i na końcu drukuje gotowe komendy do
+wklejenia na klienta. Endpoint jest zawsze `http://`, nigdy `https://`.
 
 ```
 === terminal 1 — backend (na kliencie): =============================
