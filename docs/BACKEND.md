@@ -110,6 +110,17 @@ cd frontend && npm run dev
 
 `OCR_REMOTE_TIMEOUT` (domyślnie `900` s) kontroluje timeout żądania.
 
+Cały lokalny stos — backend + frontend — uruchamia jednym poleceniem
+`scripts/connect-gpu.sh`. Przyjmuje osobno klucz serwisu OCR i token backendu:
+
+```bash
+bash scripts/connect-gpu.sh <L4-IP>:8000 <OCR_API_KEY> <BACKEND_API_TOKEN>
+```
+
+Jeśli trzeci argument zostanie pominięty, skrypt wygeneruje token backendu
+i wypisze go na ekranie. Skrypt ustawia `O2J_API_TOKEN` dla Vite, więc frontend
+od razu wysyła poprawny `X-API-Token`. Ctrl-C zatrzymuje backend i frontend.
+
 ## Zmienne środowiskowe
 
 Wszystkie opisane są w `.env.example`. Dwie łatwo pomylić:
