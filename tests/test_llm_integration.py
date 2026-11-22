@@ -40,7 +40,9 @@ def test_pipeline_adds_llm_field_without_calling_server(monkeypatch):
     monkeypatch.setattr(
         adapter,
         "extract_document",
-        lambda *a, **kw: SimpleNamespace(obj={"decyzja": "odwolanie"}, error=None, responses=[1]),
+        lambda *a, **kw: SimpleNamespace(
+            obj={"decyzja": "odwolanie"}, error=None, responses=[1], sanitized=0
+        ),
     )
 
     processor = load_llm_processor(SPEC)
@@ -61,6 +63,7 @@ def test_pipeline_adds_llm_field_without_calling_server(monkeypatch):
         "error": None,
         "llm_calls": 1,
         "rejected": False,
+        "sanitized": 0,
     }
     json.dumps(result["llm"])
 

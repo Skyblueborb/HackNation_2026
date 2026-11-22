@@ -20,7 +20,12 @@ from lab.cache import read_cached, write_cache
 from lab.eval.metrics import evaluate_run
 from lab.llm.client import LLMClient
 from lab.llm.config import load_experiment, load_models
-from lab.llm.pipeline import repair_signature_names, run_pipeline, split_combined_names
+from lab.llm.pipeline import (
+    extract_document,
+    repair_signature_names,
+    run_pipeline,
+    split_combined_names,
+)
 from lab.llm.prompts import PromptSet
 from lab.llm.text_prep import prepare_ocr_text
 from o2jcore.spec.loader import load_all_classes
@@ -451,3 +456,51 @@ def test_retry_repairs_invalid_json_and_records_one_retry(tmp_path: Path, index)
     assert "błąd_walidacji" in users[1]
     assert (result.run_dir / "przyklad_01" / "odwolanie.json").exists()
     assert result.retries == 1
+
+
+def _contaminated_extraction(field: str) -> tuple[object, str]:
+    """Run `extract_document` on przyklad_02's gold with a CJK char injected.
+
+    Returns (extraction, clean_gold_value) for the mutated field.
+    """
+    pdf = GOLD_DIR / "przyklad_02" / "odwolanie.pdf"
+    cached = read_cached(CACHE_ROOT, pdf, "pdfplumber")
+    assert cached is not None, f"missing cache for {pdf}; run `lab ingest` first"
+    text = prepare_ocr_text(cached["pages"])
+
+    gold = json.loads(_gold_payload("przyklad_02", "odwolanie"))
+    clean = gold["OdwolanieKIO"][field]
+    assert isinstance(clean, str) and len(clean) > 2
+    mid = len(clean) // 2
+    gold["OdwolanieKIO"][field] = clean[:mid] + "的" + clean[mid:]
+
+    def transport(**kwargs):
+        return _response(json.dumps(gold, ensure_ascii=False))
+
+    extraction = extract_document(
+        LLMClient(MODEL, transport=transport),
+        PromptSet(),
+        SPECS["odwolanie"],
+        text,
+    )
+    return extraction, clean
+
+
+def test_extract_document_strips_cjk_from_model_output():
+    result, clean = _contaminated_extraction("miejscowosc")
+
+    assert result.obj is not None, result.error
+    assert result.error is None
+    assert result.sanitized == 1
+    assert result.retries == 0
+    assert result.obj["OdwolanieKIO"]["miejscowosc"] == clean
+
+
+def test_extract_document_rescues_cjk_in_enum_constrained_field():
+    result, clean = _contaminated_extraction("czynnosc_opis")
+
+    assert result.obj is not None, result.error
+    assert result.error is None
+    assert result.sanitized == 1
+    assert result.retries == 0
+    assert result.obj["OdwolanieKIO"]["czynnosc_opis"] == clean
