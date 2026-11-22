@@ -676,6 +676,13 @@ def model_check_cmd(
     ),
     analysis: str = typer.Option("all", "--analysis", help="e2e, ocr, llm or all"),
     out_dir: Path | None = typer.Option(None, "--out-dir"),
+    remote: str | None = typer.Option(
+        None, "--remote", help="Backend base URL; e.g. http://localhost:8000"
+    ),
+    api_token: str | None = typer.Option(
+        None, "--api-token", envvar="O2J_API_TOKEN", help="X-API-Token for --remote"
+    ),
+    client_token: str = typer.Option("model-check", "--client-token"),
     verbose: bool = typer.Option(False, "--verbose", help="Show debug-level progress."),
 ) -> None:
     """Benchmark OCR models and LLM profiles, saving raw OCR text for diagnosis."""
@@ -694,6 +701,29 @@ def model_check_cmd(
     resolved_root = paths.validate_data_root(
         data_root if data_root is not None else paths.data_root()
     )
+    if remote:
+        options = {
+            "data_root": resolved_root,
+            "corpus": corpus,
+            "count": count,
+            "random": random_sample,
+            "seed": seed,
+            "sets": [item.strip() for item in sets.split(",") if item.strip()] if sets else None,
+            "pdf_paths": list(pdf) if pdf else None,
+            "ocr_models": ["remote"],
+            "llm_profiles": ["remote"],
+            "analysis": ["e2e"],
+            "out_dir": out_dir if out_dir is not None else paths.work_root() / "model-check",
+            "remote_url": remote,
+            "api_token": api_token,
+            "client_token": client_token,
+        }
+        mc.configure_logging(verbose)
+        run_dir = mc.execute_model_check(options)
+        typer.echo(f"model-check: {run_dir}")
+        typer.echo(f"summary: {run_dir / 'summary.md'}")
+        return
+
     if ocr_model:
         ocr_models = list(ocr_model)
     else:

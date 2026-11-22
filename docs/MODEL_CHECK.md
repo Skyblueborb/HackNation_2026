@@ -73,6 +73,26 @@ uv run lab model-check \
 
 `--data-root` to katalog repo, nie `dane/`. Wyniki lądują w `work/model-check/` albo pod wskazanym `--out-dir`.
 
+## 2c. Harness przez backend proxy
+
+Harness może wysyłać pliki do lokalnego backendu z `WEB_OCR_BACKEND=remote`.
+Wtedy backend działa jako proxy do OCR+LLM na L4 — nie ładujesz wag lokalnie:
+
+```bash
+uv run lab model-check \
+  --data-root /Users/skyblueborb/Projects/HackNation_2026 \
+  --corpus przyklad \
+  --count 10 \
+  --remote http://127.0.0.1:8000 \
+  --api-token <BACKEND_API_TOKEN> \
+  --out-dir /Users/skyblueborb/Projects/HackNation_2026/work/model-check-remote \
+  --verbose
+```
+
+`--api-token` czyta też zmienną `O2J_API_TOKEN`. W tym trybie dostępny jest
+tylko pomiar `e2e`; wiersz w `summary.md` ma `OCR=remote`, `LLM=remote`.
+Pozostałe tryby (`llm`, `ocr`) wymagają lokalnych modeli.
+
 ## 3. Uruchamianie
 
 ### Najprostszy smoke test

@@ -302,6 +302,62 @@ def _llm_result(llm: Any, texts: list[str]) -> dict[str, Any] | None:
     return {"raw_text": "\n\n".join(texts)}
 
 
+_ANALYZE_CLASS = {
+    "potwierdzenie_przelewu": "przelew",
+    "nieznany": "odwolanie",
+}
+
+
+def run_case_remote(
+    case: DocumentCase,
+    *,
+    remote_url: str,
+    api_token: str | None,
+    client_token: str,
+    combo_dir: Path,
+    timeout: float = 900.0,
+) -> dict[str, Any]:
+    """Run one PDF through a remote FastAPI backend acting as AI proxy."""
+    import httpx
+
+    started = time.perf_counter()
+    headers = {"X-API-Token": api_token} if api_token else {}
+    doc_class = _ANALYZE_CLASS.get(case.class_id, case.class_id)
+    with case.pdf.open("rb") as handle:
+        response = httpx.post(
+            f"{remote_url.rstrip('/')}/api/analyze",
+            data={
+                "client_token": client_token,
+                "client_doc_id": f"harness-{case.set_id}-{case.pdf.stem}",
+                "doc_class": doc_class,
+            },
+            files={"file": (case.pdf.name, handle, "application/pdf")},
+            headers=headers,
+            timeout=timeout,
+        )
+    response.raise_for_status()
+    payload = response.json()
+    texts = [page.get("text", "") for page in payload.get("pages", [])]
+    canonical = payload.get("canonical_json")
+    if not isinstance(canonical, dict):
+        canonical = {"raw_text": "\n\n".join(texts)}
+
+    combo_dir = Path(combo_dir)
+    write_ocr_text(case.pdf, texts, combo_dir / "ocr" / case.set_id)
+    _write_prediction(case, combo_dir, canonical)
+    elapsed = time.perf_counter() - started
+    return {
+        "set_id": case.set_id,
+        "status": "ok",
+        "timings": {
+            "render": 0.0, "ocr": 0.0, "llm": 0.0, "total": elapsed,
+        },
+        "texts": texts,
+        "prediction": canonical,
+        "ocr_proxy": {"cer": "N/A", "wer": "N/A"},
+    }
+
+
 def run_case(
     case: DocumentCase,
     *,
@@ -797,6 +853,50 @@ def execute_model_check(options: dict[str, Any]) -> Path:
     (run_dir / "config.json").write_text(
         json.dumps(_jsonable(options), ensure_ascii=False, indent=2), encoding="utf-8"
     )
+    remote_url = options.get("remote_url")
+    if remote_url:
+        specs = _specs_with_reject()
+        combo_dir = run_dir / "e2e" / "remote" / "remote"
+        combo_dir.mkdir(parents=True, exist_ok=True)
+        rows: list[dict[str, Any]] = []
+        logger.info("run dir=%s cases=%d remote=%s", run_dir, len(cases), remote_url)
+        for case in cases:
+            row = run_case_remote(
+                case,
+                remote_url=remote_url,
+                api_token=options.get("api_token"),
+                client_token=options.get("client_token", "model-check"),
+                combo_dir=combo_dir,
+                timeout=float(options.get("remote_timeout", 900)),
+            )
+            logger.info("  total=%.2fs status=%s", row["timings"]["total"], row["status"])
+            rows.append(
+                {
+                    "set_id": row["set_id"],
+                    "status": row["status"],
+                    "timings": row["timings"],
+                    "ocr_proxy": row["ocr_proxy"],
+                }
+            )
+        (combo_dir / "timings.json").write_text(
+            json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        score = score_combo(
+            cases, combo_dir, specs, sorted({case.set_id for case in cases})
+        )
+        results = [
+            {
+                "analysis": "e2e",
+                "ocr_model": "remote",
+                "llm_profile": "remote",
+                "combo_dir": str(combo_dir.relative_to(run_dir)),
+                **score,
+            }
+        ]
+        write_summary(run_dir, results)
+        logger.info("summary written to %s", run_dir / "summary.md")
+        return run_dir
+
     specs = _specs_with_reject()
     results: list[dict[str, Any]] = []
     combos: list[tuple[str, str, str | None]] = []

@@ -3,6 +3,7 @@ import json
 import logging
 from pathlib import Path
 
+import httpx
 import pytest
 from PIL import Image
 
@@ -222,6 +223,52 @@ def test_potwierdzenie_pdf_maps_to_przelew_gold(tmp_path):
     )
     assert cases[0].class_id == "potwierdzenie_przelewu"
     assert cases[0].gold.name == "przelew.json"
+
+
+def test_run_case_remote_uses_backend_proxy(tmp_path):
+    root = _make_data_root(tmp_path, n_sets=1)
+    case = mc.select_documents(
+        root, corpus="przyklad", count=1, random_sample=False, seed=42,
+        sets=None, pdf_paths=None,
+    )[0]
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "backend": "remote",
+                "pages": [{"page": 1, "text": "REMOTE OCR"}],
+                "canonical_json": {"ok": True},
+            }
+
+    def fake_post(url, **kwargs):
+        captured.update(url=url, **kwargs)
+        return FakeResponse()
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(httpx, "post", fake_post)
+    try:
+        row = mc.run_case_remote(
+            case,
+            remote_url="http://127.0.0.1:8000",
+            api_token="tok",
+            client_token="harness",
+            combo_dir=tmp_path / "combo",
+        )
+    finally:
+        monkeypatch.undo()
+
+    assert captured["url"] == "http://127.0.0.1:8000/api/analyze"
+    assert captured["headers"]["X-API-Token"] == "tok"
+    assert captured["data"]["doc_class"] == "odwolanie"
+    assert row["timings"]["total"] >= 0
+    pred = tmp_path / "combo" / "predictions" / case.set_id / "odwolanie.json"
+    assert json.loads(pred.read_text()) == {"ok": True}
+    ocr = tmp_path / "combo" / "ocr" / case.set_id / "odwolanie.ocr.txt"
+    assert "REMOTE OCR" in ocr.read_text()
 
 
 def test_run_case_e2e_writes_ocr_artifact_and_prediction(tmp_path):
