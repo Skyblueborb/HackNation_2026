@@ -261,9 +261,12 @@ def evaluate_run(
                     result.null_stats["non_null"] += 1
                 fspec = field_by_path.get(field_key)
                 normalizer_name = fspec.normalizer if fspec is not None else "identity"
+                fuzzy_threshold = fspec.fuzzy_threshold if fspec is not None else 90
 
                 for mode in _MODES:
-                    verdict = compare_leaf(pred_val, gold_val, normalizer_name, mode=mode)
+                    verdict = compare_leaf(
+                        pred_val, gold_val, normalizer_name, mode=mode, fuzzy_threshold=fuzzy_threshold
+                    )
                     _add_verdict(result, cid, rel_path, field_key, mode, verdict, file_counts)
                     if mode == "exact" and verdict not in (Verdict.TP, Verdict.TN):
                         result.mismatches.append(

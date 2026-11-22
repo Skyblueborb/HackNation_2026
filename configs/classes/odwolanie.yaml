@@ -72,6 +72,7 @@ fields:
     kind: string
     nullable: true
     normalizer: text
+    fuzzy_threshold: 80
     description: >-
       Pełna nazwa podmiotu opisanego w tekście jako Odwołujący (sekcja
       'Odwołujący' / wykonawca wnoszący odwołanie). Jeśli występuje
@@ -109,6 +110,7 @@ fields:
     kind: string
     nullable: true
     normalizer: text
+    fuzzy_threshold: 80
     description: "Nazwa podmiotu zatrudniającego pełnomocnika."
 
   - path: Odwolujacy[].pelnomocnik.mail
@@ -136,6 +138,7 @@ fields:
     kind: string
     nullable: true
     normalizer: text
+    fuzzy_threshold: 80
     description: >-
       Pełna nazwa podmiotu opisanego w tekście jako Zamawiający (sekcja
       'Zamawiający').
@@ -194,4 +197,5 @@ fields:
     kind: string
     nullable: true
     normalizer: text
+    fuzzy_threshold: 80
     description: "Tytuł zamówienia lub postępowania, jeśli występuje w dokumencie."

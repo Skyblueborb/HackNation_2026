@@ -37,10 +37,9 @@ def nrb26(v: Any) -> str | None:
     if v is None:
         return None
     s = str(v).strip()
-    if s[:2].upper() == "PL":
-        s = s[2:]
-    result = _DIGITS_RE.sub("", s)
-    return result or None
+    prefix = s[:2].upper() if s[:2].isalpha() else ""
+    digits_part = _DIGITS_RE.sub("", s[len(prefix):])
+    return (prefix + digits_part) if digits_part else None
 
 
 def bzp(v: Any) -> str | None:

@@ -94,9 +94,10 @@ def test_identity():
     assert v.identity(None) is None
 
 
-def test_nrb26_strips_pl_prefix_and_whitespace():
-    assert v.nrb26("PL 68 4382 2304 9992 2952 6283 4736") == "68438223049992295262834736"
+def test_nrb26_keeps_country_prefix_and_strips_whitespace():
+    assert v.nrb26("PL 68 4382 2304 9992 2952 6283 4736") == "PL68438223049992295262834736"
     assert v.nrb26("68438223049992295262834736") == "68438223049992295262834736"
+    assert v.nrb26("pl68438223049992295262834736") == "PL68438223049992295262834736"
 
 
 def test_nrb26_does_not_pad_or_truncate():

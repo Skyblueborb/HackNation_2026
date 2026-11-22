@@ -60,6 +60,7 @@ class FieldSpec:
     kind: str  # "string" | "integer" | "float" | "object" (object only for pure containers)
     nullable: bool = True
     normalizer: str = "identity"
+    fuzzy_threshold: int = 90
     description: str = ""
     enum: EnumSpec | None = None
     derived_from: str | None = None

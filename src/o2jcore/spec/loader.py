@@ -73,6 +73,10 @@ def _parse_field(raw: dict, class_path: Path) -> FieldSpec:
     if not isinstance(normalizer, str):
         _fail(class_path, f"field '{path}': normalizer must be a string")
 
+    fuzzy_threshold = raw.get("fuzzy_threshold", 90)
+    if not isinstance(fuzzy_threshold, int) or isinstance(fuzzy_threshold, bool):
+        _fail(class_path, f"field '{path}': fuzzy_threshold must be an int")
+
     description = raw.get("description", "")
     if not isinstance(description, str):
         _fail(class_path, f"field '{path}': description must be a string")
@@ -128,6 +132,7 @@ def _parse_field(raw: dict, class_path: Path) -> FieldSpec:
         kind=kind,
         nullable=nullable,
         normalizer=normalizer,
+        fuzzy_threshold=fuzzy_threshold,
         description=description,
         enum=enum_spec,
         derived_from=derived_from,
