@@ -181,6 +181,21 @@ def test_analyze_prefers_text_layer_and_skips_ocr(monkeypatch):
     assert result == {"backend": "text", "filename": "x.pdf"}
 
 
+def test_analyze_force_image_overrides_text_layer(monkeypatch):
+    monkeypatch.setenv("OCR_FORCE_IMAGE", "1")
+    monkeypatch.setattr(pipeline, "_has_text_layer", lambda data: True)
+    result = asyncio.run(
+        run_analyze_async(
+            pdf_bytes(),
+            FakeExtractor(),
+            backend="test",
+            model="m",
+        )
+    )
+    assert result["backend"] == "test"
+    assert result["pages"] == [{"page": 1, "text": "text"}]
+
+
 def test_analyze_falls_back_to_ocr_when_gate_raises(monkeypatch):
     def boom(data):
         raise ValueError("not a pdf")

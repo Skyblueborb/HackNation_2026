@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import tempfile
 import time
 from pathlib import Path
@@ -37,11 +38,14 @@ async def run_analyze_async(
     and Polish diacritics) and ~2.4x faster, so OCR is the fallback, not the
     default. A PDF pdfium cannot parse falls through to OCR unchanged.
     """
-    try:
-        text_layer = await asyncio.to_thread(_has_text_layer, data)
-    except Exception as exc:
-        logger.warning("text-layer gate failed (%s); falling back to OCR", exc)
+    if os.environ.get("OCR_FORCE_IMAGE", "0") == "1":
         text_layer = False
+    else:
+        try:
+            text_layer = await asyncio.to_thread(_has_text_layer, data)
+        except Exception as exc:
+            logger.warning("text-layer gate failed (%s); falling back to OCR", exc)
+            text_layer = False
     if text_layer:
         return await run_textlayer_async(data, processor=processor, filename=filename)
     return await run_ocr_async(

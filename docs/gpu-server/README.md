@@ -102,6 +102,14 @@ i `ocr-api serve --host 0.0.0.0 --port 8000` (OCR obrazowy, model
 publiczny adres **IPv4** (`curl -4`) i na końcu drukuje gotowe komendy do
 wklejenia na klienta. Endpoint jest zawsze `http://`, nigdy `https://`.
 
+Bootstrap ustawia `OCR_FORCE_IMAGE=1`, więc OCR zawsze renderuje stronę do
+obrazu i używa modelu CUDA — nawet gdy PDF ma warstwę tekstową. Aby przywrócić
+szybką ścieżkę `pdfplumber`, uruchom:
+
+```bash
+OCR_FORCE_IMAGE=0 bash scripts/gpu-server-bootstrap.sh
+```
+
 ```
 === terminal 1 — backend (na kliencie): =============================
 bash scripts/connect-gpu-backend.sh <public-ip>:8000 <API_KEY> <BACKEND_API_TOKEN>
