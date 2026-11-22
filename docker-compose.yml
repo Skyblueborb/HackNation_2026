@@ -57,8 +57,27 @@ services:
       # nginx dodaje ten nagłówek do każdego /api; nie trafia do bundle'a JS.
       O2J_API_TOKEN: ${API_TOKEN:-}
     ports:
-      - "3000:80"
+      # VM organizatora wystawia do internetu tylko 80/443/8000/8080 -> WEB_PORT=8080.
+      - "${WEB_PORT:-3000}:80"
     restart: unless-stopped
+
+  # Wsad oceniający: input/ -> output/ jednym przebiegiem, bez GUI i bez portów.
+  # `network_mode: host` jest konieczny, bo LLM jest osiągalny pod
+  # 127.0.0.1:8082 *hosta* (tunel SSH do serwera GPU), a nie w sieci composa.
+  batch:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    profiles: ["batch"]
+    network_mode: host
+    environment:
+      O2J_CONFIG_PATH: /app/configs
+      OCR_LLM_PROCESSOR: ${OCR_LLM_PROCESSOR:-ocr_api.llm_processor:processor}
+      OCR_LLM_MODEL: ${OCR_LLM_MODEL:-qwen3-8b-l4}
+    volumes:
+      - ./input:/app/input
+      - ./output:/app/output
+    command: ["python", "-m", "ocr_api.batch", "--input", "input", "--output", "output"]
 
 volumes:
   o2j-data:

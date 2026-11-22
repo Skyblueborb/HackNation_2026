@@ -45,6 +45,7 @@ ocr-api = "ocr_api.cli:main"
 local-ai = "local_ai.cli:main"
 local-llm = "local_ai.llm:main"
 ocr-pdf2json = "ocr_api.pdf_to_json:main"
+ocr-batch = "ocr_api.batch:main"
 
 [build-system]
 requires = ["hatchling"]
