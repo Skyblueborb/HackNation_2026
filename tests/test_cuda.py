@@ -80,6 +80,16 @@ def install_fake_cuda(monkeypatch):
     return calls
 
 
+def test_cuda_model_id_can_be_overridden(monkeypatch):
+    monkeypatch.setenv("OCR_MODEL", "lightonai/LightOnOCR-3-0.8B")
+    import importlib
+
+    importlib.reload(backends)
+    assert backends.MODEL_ID == "lightonai/LightOnOCR-3-0.8B"
+    monkeypatch.delenv("OCR_MODEL")
+    importlib.reload(backends)
+
+
 def test_cuda_defaults_to_empty_transcription_prompt():
     assert backends.PROMPT == ""
 
