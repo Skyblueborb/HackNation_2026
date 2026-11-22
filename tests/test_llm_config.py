@@ -53,7 +53,7 @@ def test_load_experiment_E0_defaults():
 
     assert exp.name == "E0_baseline"
     assert exp.split == "dev"
-    assert exp.extractor == "pdfplumber"
+    assert exp.extractor == "pdfplumber_layout"
     assert exp.trim is True
     assert exp.candidates is False
     assert exp.classify_method == "rules"

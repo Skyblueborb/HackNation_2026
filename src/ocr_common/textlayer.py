@@ -21,8 +21,10 @@ from pathlib import Path
 from ocr_common.ports import LLMProcessor, OCRDocument, OCRPage
 
 # Matches the lab's default extractor, so API output and `lab run` metrics are
-# produced from byte-identical page text.
-DEFAULT_EXTRACTOR = "pdfplumber"
+# produced from byte-identical page text. `layout=True` keeps the horizontal gap
+# between side-by-side signature columns, which the flat extractor merged into
+# one line and made mocodawca/pełnomocnik indistinguishable.
+DEFAULT_EXTRACTOR = "pdfplumber_layout"
 
 
 def extract_document(

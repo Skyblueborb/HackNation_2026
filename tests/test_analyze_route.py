@@ -32,7 +32,7 @@ def test_analyze_uses_client_doc_id(analyze_client, monkeypatch):
             "pages": [{"page": 1, "text": "ocr"}],
         }
 
-    monkeypatch.setattr(ocr_common, "run_ocr_async", fake_pipeline)
+    monkeypatch.setattr(ocr_common, "run_analyze_async", fake_pipeline)
     monkeypatch.setattr(main, "_extractor", lambda: object())
 
     r = analyze_client.post(

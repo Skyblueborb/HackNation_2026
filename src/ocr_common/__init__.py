@@ -8,7 +8,7 @@ from .common import (
     render_pages,
     verify_key,
 )
-from .pipeline import run_ocr_async
+from .pipeline import run_analyze_async, run_ocr_async
 from .ports import LLMProcessor, OCRDocument, OCRPage, PageExtractor
 from .registry import load_llm_processor
 
@@ -23,6 +23,7 @@ __all__ = [
     "llm_semaphore",
     "load_llm_processor",
     "render_pages",
+    "run_analyze_async",
     "run_ocr_async",
     "verify_key",
 ]

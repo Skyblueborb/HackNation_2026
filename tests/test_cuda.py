@@ -103,7 +103,7 @@ def test_cuda_app_delegates_to_pipeline(monkeypatch):
         captured.update(kwargs)
         return {"backend": "cuda", "pages": []}
 
-    monkeypatch.setattr(app_module, "run_ocr_async", fake)
+    monkeypatch.setattr(app_module, "run_analyze_async", fake)
     r = TestClient(app_module.app).post(
         "/analyze",
         headers={"X-API-Key": "test-key"},

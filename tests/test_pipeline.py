@@ -7,13 +7,18 @@ import types
 
 from PIL import Image
 
-from ocr_common import OCRDocument, load_llm_processor, run_ocr_async
+from ocr_common import OCRDocument, load_llm_processor, run_analyze_async, run_ocr_async
+from ocr_common import pipeline
 
 
 def pdf_bytes() -> bytes:
     buf = io.BytesIO()
     Image.new("RGB", (64, 64), "white").save(buf, format="PDF")
     return buf.getvalue()
+
+
+async def _fake_textlayer(data, *, processor=None, filename=None):
+    return {"backend": "text", "filename": filename}
 
 
 class FakeExtractor:
@@ -137,3 +142,56 @@ def test_run_ocr_async_serializes_ocr_but_not_llm():
 
     asyncio.run(scenario())
     assert active["max"] == 1
+
+
+def test_analyze_routes_image_pdf_to_ocr():
+    """A PDF with no text layer still goes through the OCR extractor."""
+    result = asyncio.run(
+        run_analyze_async(
+            pdf_bytes(),
+            FakeExtractor(),
+            backend="test",
+            model="m",
+        )
+    )
+    assert result["backend"] == "test"
+    assert result["pages"] == [{"page": 1, "text": "text"}]
+
+
+def test_analyze_prefers_text_layer_and_skips_ocr(monkeypatch):
+    class Exploding:
+        def extract_page(self, image):
+            raise AssertionError("OCR must not run when a text layer exists")
+
+    monkeypatch.setattr(pipeline, "_has_text_layer", lambda data: True)
+    monkeypatch.setattr(
+        pipeline,
+        "run_textlayer_async",
+        _fake_textlayer,
+    )
+    result = asyncio.run(
+        run_analyze_async(
+            pdf_bytes(),
+            Exploding(),
+            backend="test",
+            model="m",
+            filename="x.pdf",
+        )
+    )
+    assert result == {"backend": "text", "filename": "x.pdf"}
+
+
+def test_analyze_falls_back_to_ocr_when_gate_raises(monkeypatch):
+    def boom(data):
+        raise ValueError("not a pdf")
+
+    monkeypatch.setattr(pipeline, "_has_text_layer", boom)
+    result = asyncio.run(
+        run_analyze_async(
+            pdf_bytes(),
+            FakeExtractor(),
+            backend="test",
+            model="m",
+        )
+    )
+    assert result["pages"] == [{"page": 1, "text": "text"}]

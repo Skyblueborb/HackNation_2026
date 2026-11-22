@@ -21,7 +21,13 @@ from lab.cache import pdf_content_hash, read_cached, write_cache
 from lab.llm.classify import classify_document
 from lab.llm.client import LLMClient, LLMResponse, unwrap_json
 from lab.llm.config import ExperimentConfig, ModelConfig
-from lab.llm.grounding import enforce_derived, ground_object
+from lab.llm.grounding import (
+    enforce_czynnosc,
+    enforce_derived,
+    enforce_header,
+    enforce_party_ids,
+    ground_object,
+)
 from lab.llm.prompts import PromptSet, schema_key_paths
 from lab.llm.text_prep import candidate_hints, prepare_ocr_text
 from lab.manifest import run_dir_name
@@ -82,6 +88,7 @@ class Extraction:
     error: str | None = None
     grounded: int = 0
     derived: int = 0
+    filled: int = 0
 
 
 @dataclass
@@ -349,6 +356,12 @@ def extract_document(
 
         if ground_null:
             result.grounded = ground_object(obj, spec, text)
+        # Deterministic fields first: enforce_derived must see the corrected id.
+        result.filled = (
+            enforce_header(obj, spec, text)
+            + enforce_party_ids(obj, spec, text)
+            + int(enforce_czynnosc(obj, spec, text))
+        )
         result.derived = enforce_derived(obj, spec)
         obj = model.model_validate(obj).model_dump()
         result.obj = obj
@@ -505,6 +518,7 @@ def run_pipeline(
                     "retries": extraction.retries,
                     "grounded": extraction.grounded,
                     "derived": extraction.derived,
+                    "filled": extraction.filled,
                     "error": extraction.error,
                 }
             )

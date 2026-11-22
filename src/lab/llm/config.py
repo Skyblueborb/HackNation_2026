@@ -92,7 +92,7 @@ def load_models(path: Path) -> dict[str, ModelConfig]:
 class ExperimentConfig:
     name: str
     split: str = "dev"
-    extractor: str = "pdfplumber"
+    extractor: str = "pdfplumber_layout"
     trim: bool = True
     head_chars: int = 8000
     tail_chars: int = 2000
@@ -161,7 +161,7 @@ def load_experiment(path: Path) -> ExperimentConfig:
     return ExperimentConfig(
         name=str(raw.get("name") or path.stem),
         split=split,
-        extractor=str(ingest.get("extractor", "pdfplumber")),
+        extractor=str(ingest.get("extractor", "pdfplumber_layout")),
         trim=bool(ingest.get("trim", True)),
         head_chars=int(ingest.get("head_chars", 8000)),
         tail_chars=int(ingest.get("tail_chars", 2000)),

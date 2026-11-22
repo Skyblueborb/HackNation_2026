@@ -90,7 +90,11 @@ def _extractor():
 
 
 async def _run_extraction(data: bytes, filename: str | None) -> dict:
-    """Dispatch to the text-layer reader or to an image-OCR backend."""
+    """Dispatch to the text-layer reader or to an image-OCR backend.
+
+    `OCR_BACKEND=text` forces the text layer for every upload; the image
+    backends still prefer it per-document and OCR only scans.
+    """
     if OCR_BACKEND == "text":
         from ocr_common.textlayer import run_textlayer_async
 
@@ -102,9 +106,9 @@ async def _run_extraction(data: bytes, filename: str | None) -> dict:
             filename=filename,
         )
 
-    from ocr_common import run_ocr_async
+    from ocr_common import run_analyze_async
 
-    return await run_ocr_async(
+    return await run_analyze_async(
         data,
         _extractor(),
         backend=OCR_BACKEND,

@@ -68,7 +68,7 @@ def index() -> dict[str, tuple[str, str]]:
     for path in sorted(GOLD_DIR.glob("przyklad_*")):
         for cid, spec in SPECS.items():
             pdf = path / f"{spec.pdf_stem}.pdf"
-            cached = read_cached(CACHE_ROOT, pdf, "pdfplumber")
+            cached = read_cached(CACHE_ROOT, pdf, EXPERIMENT.extractor)
             assert cached is not None, f"missing cache for {pdf}; run `lab ingest` first"
             text = prepare_ocr_text(cached["pages"])
             assert text not in result
@@ -124,7 +124,9 @@ def _fake_pdf_with_cached_text(
     pdf = data_root / "dane" / set_id / f"{pdf_stem}.pdf"
     pdf.parent.mkdir(parents=True, exist_ok=True)
     pdf.write_bytes(b"%PDF-1.4 fake")
-    write_cache(work_root / "cache", pdf, "pdfplumber", [PageText(**page) for page in pages])
+    write_cache(
+        work_root / "cache", pdf, EXPERIMENT.extractor, [PageText(**page) for page in pages]
+    )
     return data_root, work_root, pdf
 
 

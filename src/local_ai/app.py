@@ -14,7 +14,7 @@ from PIL import Image
 from ocr_common import (
     configure_logging,
     load_llm_processor,
-    run_ocr_async,
+    run_analyze_async,
     verify_key,
 )
 from ocr_common.common import get_api_key, logger
@@ -135,7 +135,7 @@ async def analyze(file: UploadFile = File(...)) -> dict:
             status_code=413,
             detail=f"PDF exceeds the {MAX_UPLOAD_BYTES}-byte upload limit",
         )
-    return await run_ocr_async(
+    return await run_analyze_async(
         data,
         get_backend(),
         backend="mlx",

@@ -19,6 +19,14 @@ _PAGE_FOOTER_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 _BLANK_RUN_RE = re.compile(r"\n{2,}")
+# `pdfplumber_layout` pads lines to represent horizontal position, which is what
+# keeps side-by-side signature columns apart -- but the padding alone triples the
+# document. Three spaces still read unmistakably as a column break next to the
+# single space inside a phrase, and collapsing the rest brings the text back to
+# roughly the flat extractor's size, so the head window and HEADER_CHARS keep
+# covering the same content.
+_COLUMN_GAP_RE = re.compile(r"[ \t]{3,}")
+_COLUMN_GAP = "   "
 
 _NIP_RE = re.compile(r"(?<!\d)\d{10}(?!\d)")
 _NRB_RE = re.compile(r"(?<![\dA-Za-z])(?:PL\s*)?\d{2}(?:[\s-]?\d{4}){5}(?!\d)")
@@ -41,9 +49,18 @@ def fix_mojibake(text: str) -> str:
     return text
 
 
+def squeeze_column_gaps(text: str) -> str:
+    """Shrink layout padding to a 3-space column marker, dropping blank lines."""
+    return "\n".join(
+        _COLUMN_GAP_RE.sub(_COLUMN_GAP, line).rstrip()
+        for line in text.splitlines()
+        if line.strip()
+    )
+
+
 def strip_page_noise(text: str) -> str:
     text = _PAGE_FOOTER_RE.sub("", text)
-    text = "\n".join(line.rstrip() for line in text.splitlines())
+    text = squeeze_column_gaps(text)
     return _BLANK_RUN_RE.sub("\n", text).strip()
 
 

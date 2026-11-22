@@ -6,7 +6,13 @@ import json
 from pathlib import Path
 
 from lab import paths
-from lab.llm.text_prep import candidate_hints, fix_mojibake, prepare_ocr_text, strip_page_noise
+from lab.llm.text_prep import (
+    candidate_hints,
+    fix_mojibake,
+    prepare_ocr_text,
+    squeeze_column_gaps,
+    strip_page_noise,
+)
 
 
 def test_fix_mojibake_repairs_cp1252_decoded_polish():
@@ -56,3 +62,14 @@ def test_candidate_hints_uses_checksum_valid_nip_from_real_gold():
     hints = candidate_hints(f"NIP: {nip}\n")
     assert hints is not None
     assert f"NIP: {nip}" in hints
+
+
+def test_squeeze_column_gaps_marks_the_break_and_drops_the_padding():
+    raw = "   Bartosz Zajkowski                  Oliwia Gajewski              \n\n   Prokurent\n"
+    assert squeeze_column_gaps(raw) == "   Bartosz Zajkowski   Oliwia Gajewski\n   Prokurent"
+
+
+def test_squeeze_column_gaps_keeps_single_spaces_inside_a_phrase():
+    assert squeeze_column_gaps("Za Silvatica Technologie sp. z o.o.") == (
+        "Za Silvatica Technologie sp. z o.o."
+    )

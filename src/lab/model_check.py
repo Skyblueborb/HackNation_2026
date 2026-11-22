@@ -167,7 +167,7 @@ def select_documents(
 
 
 def _text_layer(pdf: Path) -> str:
-    return "\n\n".join(page.text for page in extract_pages(pdf, "pdfplumber"))
+    return "\n\n".join(page.text for page in extract_pages(pdf, "pdfplumber_layout"))
 
 
 def _normalize(text: str) -> str:

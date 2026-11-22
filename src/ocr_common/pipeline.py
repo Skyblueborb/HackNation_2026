@@ -3,10 +3,54 @@
 from __future__ import annotations
 
 import asyncio
+import tempfile
 import time
+from pathlib import Path
 
 from ocr_common.common import image_is_blank, inference_lock, llm_semaphore, logger, render_pages
 from ocr_common.ports import LLMProcessor, OCRDocument, OCRPage, PageExtractor
+from ocr_common.textlayer import run_textlayer_async
+
+
+def _has_text_layer(data: bytes) -> bool:
+    from o2jcore.text.pdf_text import has_text_layer
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "upload.pdf"
+        path.write_bytes(data)
+        return has_text_layer(path)
+
+
+async def run_analyze_async(
+    data: bytes,
+    extractor: PageExtractor,
+    *,
+    backend: str,
+    model: str,
+    processor: LLMProcessor | None = None,
+    filename: str | None = None,
+) -> dict:
+    """Read the PDF's own text when it has one, else render and OCR it.
+
+    The text layer is both more accurate on strict fields (OCR corrupts digits
+    and Polish diacritics) and ~2.4x faster, so OCR is the fallback, not the
+    default. A PDF pdfium cannot parse falls through to OCR unchanged.
+    """
+    try:
+        text_layer = await asyncio.to_thread(_has_text_layer, data)
+    except Exception as exc:
+        logger.warning("text-layer gate failed (%s); falling back to OCR", exc)
+        text_layer = False
+    if text_layer:
+        return await run_textlayer_async(data, processor=processor, filename=filename)
+    return await run_ocr_async(
+        data,
+        extractor,
+        backend=backend,
+        model=model,
+        processor=processor,
+        filename=filename,
+    )
 
 
 async def run_ocr_async(

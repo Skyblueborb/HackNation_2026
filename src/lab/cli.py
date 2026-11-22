@@ -61,7 +61,7 @@ def split(
 @app.command("ingest")
 def ingest(
     extractor: str = typer.Option(
-        "pdfplumber",
+        "pdfplumber_layout",
         "--extractor",
         help="Text-extraction backend: pdfium, pdfplumber, or pdfplumber_layout.",
     ),

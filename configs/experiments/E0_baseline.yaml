@@ -1,7 +1,7 @@
 name: E0_baseline
 split: dev
 ingest:
-  extractor: pdfplumber
+  extractor: pdfplumber_layout
   trim: true
   head_chars: 8000
   tail_chars: 2000
