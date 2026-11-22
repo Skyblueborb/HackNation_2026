@@ -116,6 +116,8 @@ def test_llamacpp_backend_posts_image_and_strips_think(monkeypatch):
     assert captured["url"] == "http://127.0.0.1:8083/v1/chat/completions"
     assert captured["json"]["model"] == "LightOnOCR-3-0.8B-Q4_K_M"
     assert captured["json"]["messages"][0]["content"][0]["type"] == "image_url"
+    assert len(captured["json"]["messages"][0]["content"]) == 1
+    assert captured["json"]["chat_template_kwargs"] == {"enable_thinking": False}
     assert text == "REAL OCR TEXT"
 
 

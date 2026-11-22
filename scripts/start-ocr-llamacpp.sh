@@ -20,4 +20,8 @@ exec llama-server \
   -c 8192 \
   -ngl 99 \
   -fa on \
+  --image-min-tokens 1024 \
+  --reasoning off \
+  --reasoning-budget 0 \
+  --chat-template-kwargs '{"enable_thinking":false}' \
   --parallel 1

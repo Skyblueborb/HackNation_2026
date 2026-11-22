@@ -143,8 +143,7 @@ class LlamaCppBackend:
                 "image_url": {"url": f"data:image/png;base64,{b64}"},
             }
         ]
-        if PROMPT:
-            content.append({"type": "text", "text": PROMPT})
+        # No text prompt: do not ask for grounding/bounding boxes.
         try:
             response = self.client.post(
                 f"{self.url.rstrip('/')}/chat/completions",
@@ -154,6 +153,7 @@ class LlamaCppBackend:
                     "temperature": 0,
                     "max_tokens": MAX_TOKENS,
                     "stream": False,
+                    "chat_template_kwargs": {"enable_thinking": False},
                 },
             )
             response.raise_for_status()

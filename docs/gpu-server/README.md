@@ -114,6 +114,11 @@ models/llamacpp/LightOnOCR-3-0.8B.mmproj-q8_0.gguf
 Serwer OCR działa na `127.0.0.1:8083`, a `ocr-api` używa go przez
 `OCR_CPP_BACKEND=1`. To szybka ścieżka C++ — nie transformers eager generate.
 
+Thinking i grounding są wyłączone: serwer startuje z `--reasoning off`,
+`--reasoning-budget 0` i `--chat-template-kwargs '{"enable_thinking":false}'`,
+a klient wysyła tylko obraz, bez promptu tekstowego. Model nie powinien zwracać
+`<think>...</think>` ani ramek `![label](x1,y1,x2,y2)`.
+
 Bootstrap ustawia `OCR_FORCE_IMAGE=1`, więc OCR zawsze renderuje stronę do
 obrazu i używa modelu CUDA — nawet gdy PDF ma warstwę tekstową. Aby przywrócić
 szybką ścieżkę `pdfplumber`, uruchom:
