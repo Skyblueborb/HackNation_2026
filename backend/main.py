@@ -69,7 +69,7 @@ OCR_BACKEND = os.environ.get("WEB_OCR_BACKEND", "text")
 _DEFAULT_OCR_MODEL = {
     "text": "pdfplumber",
     "mlx": "local-mlx",
-}.get(OCR_BACKEND, "lightonai/LightOnOCR-3-4B")
+}.get(OCR_BACKEND, "lightonai/LightOnOCR-3-0.8B")
 OCR_MODEL = os.environ.get("WEB_OCR_MODEL", _DEFAULT_OCR_MODEL)
 
 

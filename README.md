@@ -180,7 +180,7 @@ with `lab serve --model qwen3-8b`. Then `/analyze` gains an `llm` field with
 `class`, `data`, `error`, `llm_calls`. See `docs/llm-module-contract.md`.
 
 Production runs on an NVIDIA L4 (Ubuntu Noble) box with PyTorch CUDA, full
-BF16 `lightonai/LightOnOCR-3-4B`, preloaded at startup. Local MLX is a separate
+BF16 `lightonai/LightOnOCR-3-0.8B`, preloaded at startup. Local MLX is a separate
 app used only for testing on the Mac. The two dependency sets never mix.
 
 Two credentials, easy to confuse: the standalone OCR services (`ocr-api`,

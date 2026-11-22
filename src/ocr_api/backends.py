@@ -1,4 +1,4 @@
-"""CUDA backend for lightonai/LightOnOCR-3-4B in full BF16."""
+"""CUDA backend for LightOnOCR-3 in full BF16 (0.8B default)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import os
 
 from PIL import Image
 
-MODEL_ID = os.environ.get("OCR_MODEL", "lightonai/LightOnOCR-3-4B")
+MODEL_ID = os.environ.get("OCR_MODEL", "lightonai/LightOnOCR-3-0.8B")
 MAX_TOKENS = int(os.environ.get("OCR_MAX_TOKENS", "2048"))
 ATTN_IMPL = os.environ.get("OCR_ATTN_IMPL", "sdpa")
 # LightOnOCR-3: "" = full-page transcription; "grounding" = bounding boxes only.

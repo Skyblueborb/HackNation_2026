@@ -28,7 +28,8 @@
 | fastapi | latest | MIT | Serwer HTTP API dla ścieżki OCR | 2026-11-21 |
 | uvicorn | latest | BSD-3 | ASGI server dla API | 2026-11-21 |
 | python-multipart | latest | Apache-2.0 | Upload plików PDF przez API | 2026-11-21 |
-| LightOnOCR-3-4B | latest | Apache-2.0 | Model bazowy OCR | 2026-11-21 |
+| LightOnOCR-3-4B | latest | Apache-2.0 | Model bazowy OCR (4B) | 2026-11-21 |
+| lightonai/LightOnOCR-3-0.8B | latest | Apache-2.0 | Model OCR na L4 (CUDA, domyślny) | 2026-11-22 |
 | prithivMLmods/LightOnOCR-3-4B-MLX (`8bit/`) | latest | Apache-2.0 | 8-bitowy MLX OCR, dokładny (`scripts/make-mlx-model.sh`) | 2026-11-21 |
 | fwgpiyawudk/LightOnOCR-3-0.8B-MLX-8bit | latest | Apache-2.0 | 8-bitowy MLX OCR, szybki (domyślny CLI) | 2026-11-21 |
 | mlx-vlm | latest | MIT | Backend demo OCR na Apple Silicon | 2026-11-21 |
