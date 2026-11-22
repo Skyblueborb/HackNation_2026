@@ -37,6 +37,42 @@ W `metrics.json` są też pozostałe polityki nulli (`f1_tp`, `f1_strict`).
    i kończy błędem z komendą startową, jeśli serwer nie odpowiada.
 4. **Środowisko.** `uv sync --extra local --extra serve --extra lab`.
 
+## 2b. Korpus `borbelka`
+
+Katalog `testy-dla-borbelka/` ma strukturę zestawów jak `przyklad_*`:
+
+```text
+testy-dla-borbelka/
+  01/  <hash>.pdf + <hash>.json   (3–4 dokumenty)
+  02/  ...
+  ...
+  -1/  <hash>.pdf + <hash>.json   (dokumenty negatywne, gold {})
+  _results/                        (wyniki harnessu, nie dane)
+```
+
+Klasa jest wywnioskowana z kształtu gold JSON:
+
+- `OdwolanieKIO` → `odwolanie`
+- `mocodawca` → `pelnomocnictwo`
+- `przelew_bankowy` → `potwierdzenie_przelewu`
+- `{}` → `nieznany` (dokument ma zostać odrzucony)
+
+Uruchomienie losowych zestawów:
+
+```bash
+uv run lab model-check \
+  --data-root /Users/skyblueborb/Projects/HackNation_2026 \
+  --corpus borbelka \
+  --count 5 \
+  --random \
+  --seed 42 \
+  --analysis e2e \
+  --ocr-model models/LightOnOCR-3-0.8B-mlx-8bit \
+  --verbose
+```
+
+`--data-root` to katalog repo, nie `dane/`. Wyniki lądują w `work/model-check/` albo pod wskazanym `--out-dir`.
+
 ## 3. Uruchamianie
 
 ### Najprostszy smoke test
@@ -110,7 +146,7 @@ wiele F1 traci LLM przez sam OCR.
 | Opcja | Domyślnie | Znaczenie |
 |---|---|---|
 | `--data-root PATH` | `configs/paths.yaml` / `O2J_DATA_ROOT` | Katalog zawierający `dane/` |
-| `--corpus` | `all` | `przyklad`, `skany` albo `all` |
+| `--corpus` | `all` | `przyklad`, `skany`, `borbelka` albo `all` |
 | `--count N` | `5` | Liczba zestawów; `0` = wszystkie |
 | `--random` | off | Losuj zestawy zamiast brać pierwsze N |
 | `--seed INT` | `42` | Ziarno losowania |

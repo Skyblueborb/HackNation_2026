@@ -660,7 +660,9 @@ def report() -> None:
 @app.command("model-check")
 def model_check_cmd(
     data_root: Path | None = typer.Option(None, "--data-root"),
-    corpus: str = typer.Option("all", "--corpus", help="przyklad, skany or all"),
+    corpus: str = typer.Option(
+        "all", "--corpus", help="przyklad, skany, borbelka or all"
+    ),
     count: int = typer.Option(5, "--count", help="Number of sets; 0 means all."),
     random_sample: bool = typer.Option(False, "--random", help="Sample sets randomly."),
     seed: int = typer.Option(42, "--seed"),
@@ -682,8 +684,8 @@ def model_check_cmd(
     from ocr_api.llm_processor import validate_model
     from ocr_api.pdf_to_json import llm_health
 
-    if corpus not in ("przyklad", "skany", "all"):
-        raise typer.BadParameter("--corpus must be przyklad, skany or all")
+    if corpus not in ("przyklad", "skany", "borbelka", "all"):
+        raise typer.BadParameter("--corpus must be przyklad, skany, borbelka or all")
     requested = {part.strip() for part in analysis.split(",") if part.strip()}
     if not requested or not requested <= {"e2e", "ocr", "llm", "all"}:
         raise typer.BadParameter("--analysis must contain e2e, ocr, llm or all")

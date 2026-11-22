@@ -12,7 +12,7 @@ import random
 import shutil
 import statistics
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -91,6 +91,19 @@ def discover_sets(data_root: Path, corpus: str) -> list[str]:
             scan_root = dane / "skany" / dir_name
             for pdf in sorted(scan_root.glob("*/*.pdf")):
                 set_ids.append(f"skany_{dir_name}_{pdf.parent.name}")
+    if corpus in ("borbelka", "all"):
+        root = paths.validate_data_root(data_root) / "testy-dla-borbelka"
+        candidates = [
+            f"borbelka_{p.name}"
+            for p in root.iterdir()
+            if p.is_dir() and any(p.glob("*.pdf"))
+        ]
+
+        def order(set_id: str) -> int:
+            value = set_id.split("_", 1)[1]
+            return int(value) if value.lstrip("-").isdigit() else 10**6
+
+        set_ids.extend(sorted(candidates, key=order))
     return set_ids
 
 
@@ -207,6 +220,15 @@ def _cases_for_set(
     return cases
 
 
+def _cases_for_borbelka_set(set_id: str, data_root: Path) -> list[DocumentCase]:
+    dir_name = set_id.split("_", 1)[1]
+    folder = data_root / "testy-dla-borbelka" / dir_name
+    return [
+        replace(_case_from_sidecar(pdf), set_id=set_id, corpus="borbelka")
+        for pdf in sorted(folder.glob("*.pdf"))
+    ]
+
+
 def select_documents(
     data_root: Path,
     *,
@@ -232,7 +254,10 @@ def select_documents(
             selected = pool
     cases: list[DocumentCase] = []
     for set_id in selected:
-        cases.extend(_cases_for_set(set_id, dane, missing))
+        if set_id.startswith("borbelka_"):
+            cases.extend(_cases_for_borbelka_set(set_id, data_root))
+        else:
+            cases.extend(_cases_for_set(set_id, dane, missing))
     return cases
 
 

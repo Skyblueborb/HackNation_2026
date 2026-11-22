@@ -32,6 +32,36 @@ def _make_data_root(base: Path, n_sets: int, with_scans: bool = False) -> Path:
     return root
 
 
+def _make_borbelka_root(base: Path) -> Path:
+    root = base / "borbelka-root"
+    borbelka = root / "testy-dla-borbelka"
+    for set_name, gold in (
+        ("01", '{"OdwolanieKIO": {}}'),
+        ("-1", "{}"),
+    ):
+        set_dir = borbelka / set_name
+        set_dir.mkdir(parents=True)
+        pdf = set_dir / f"{set_name.replace('-', 'n')}.pdf"
+        pdf.write_bytes(_pdf_bytes())
+        pdf.with_suffix(".json").write_text(gold, encoding="utf-8")
+    return root
+
+
+def test_discover_sets_borbelka(tmp_path):
+    root = _make_borbelka_root(tmp_path)
+    assert mc.discover_sets(root, "borbelka") == ["borbelka_-1", "borbelka_01"]
+
+
+def test_select_documents_borbelka_random(tmp_path):
+    root = _make_borbelka_root(tmp_path)
+    cases = mc.select_documents(
+        root, corpus="borbelka", count=2, random_sample=True, seed=42,
+        sets=None, pdf_paths=None,
+    )
+    assert {case.set_id for case in cases} == {"borbelka_-1", "borbelka_01"}
+    assert any(case.class_id == "nieznany" for case in cases)
+
+
 def test_select_documents_count_first(tmp_path):
     root = _make_data_root(tmp_path, n_sets=3)
     cases = mc.select_documents(
