@@ -20,7 +20,7 @@ from lab.cache import read_cached, write_cache
 from lab.eval.metrics import evaluate_run
 from lab.llm.client import LLMClient
 from lab.llm.config import load_experiment, load_models
-from lab.llm.pipeline import run_pipeline
+from lab.llm.pipeline import run_pipeline, split_combined_names
 from lab.llm.prompts import PromptSet
 from lab.llm.text_prep import prepare_ocr_text
 from o2jcore.spec.loader import load_all_classes
@@ -126,6 +126,25 @@ def _fake_pdf_with_cached_text(
     pdf.write_bytes(b"%PDF-1.4 fake")
     write_cache(work_root / "cache", pdf, "pdfplumber", [PageText(**page) for page in pages])
     return data_root, work_root, pdf
+
+
+def test_split_combined_names_expands_list_entries():
+    obj = {
+        "pelnomocnicy": [
+            {"imie_nazwisko": "adw. Piotr Zalewski, Anna Nowak", "pesel": None}
+        ]
+    }
+    out = split_combined_names(obj)
+    assert [p["imie_nazwisko"] for p in out["pelnomocnicy"]] == [
+        "Piotr Zalewski",
+        "Anna Nowak",
+    ]
+
+
+def test_split_combined_names_keeps_first_name_in_single_object():
+    obj = {"Odwolujacy": [{"pelnomocnik": {"imie_nazwisko": "Anna Kowalska, Jan Nowak"}}]}
+    out = split_combined_names(obj)
+    assert out["Odwolujacy"][0]["pelnomocnik"]["imie_nazwisko"] == "Anna Kowalska"
 
 
 def test_classification_selects_extraction_schema_for_unexpected_filename(tmp_path: Path):

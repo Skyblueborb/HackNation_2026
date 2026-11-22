@@ -6,7 +6,8 @@ Role i pola osobowe:
 - `mocodawca[].podpisujacy[].imie_nazwisko` to wyłącznie osoby fizyczne podpisujące w imieniu mocodawcy. Nigdy nazwa firmy. Szukaj ich przy końcowych liniach podpisu, zwrotach „Podpisano”, „podpisano przez” albo przy kropkowanej linii poprzedzającej nazwisko. Jeśli podpis jest nieczytelny, wpisz null.
 - `pelnomocnicy[].imie_nazwisko` to osoby otrzymujące pełnomocnictwo. Usuń tytuły i przedrostki: „r. pr.”, „adw.”, „mec.”, „radca prawny”. Jedna osoba to jeden element tablicy.
 - PESEL wpisz tylko wtedy, gdy stoi literalnie przy tej osobie. W przeciwnym razie null.
-- Jeśli nie potrafisz jednoznacznie przypisać osoby do roli, wpisz null zamiast zgadywać.
+- Jeśli przy linii podpisu albo na liście pełnomocników stoi imię i nazwisko, wpisz je. Null tylko wtedy, gdy w dokumencie nie ma osoby dla tej roli, a nie dlatego, że inna wartość jest niepewna.
+- Gdy `typ=osoba_prawna`, zawsze wpisz `nazwa`, `nip` i `krs`, jeśli występują literalnie przy tym podmiocie. Nie zamieniaj ich na null z ostrożności.
 
 {% if keys is defined and keys %}
 <klucze_json>

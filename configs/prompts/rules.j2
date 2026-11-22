@@ -8,4 +8,6 @@ Jeśli etykieta w tekście OCR ma uszkodzone polskie znaki, odtwórz ją zgodnie
 
 Wartości ścisłe (daty, kwoty, KRS, NIP, REGON, PESEL, numery rachunków i identyfikatory liczbowe) traktuj jako bezbłędne lub nieistniejące: wpisz je tylko wtedy, gdy są literalnie obecne w tekście i jednoznacznie przypisane do pola. W razie wątpliwości wpisz null — lepiej zwrócić null niż zgadywać.
 
+Zasada null dotyczy wyłącznie wartości ścisłych, których nie ma w tekście albo które są wieloznaczne. Dotyczy wartości ścisłych, nie nazw firm, ról ani opisów. Jeśli pole jest wyraźnie obecne i ma jednoznacznie przypisaną rolę, nie zamieniaj wyraźnej wartości na null tylko dlatego, że inne pole jest niepewne.
+
 Nie kopiuj wartości z innego pola, innej sekcji dokumentu albo innego podmiotu. Nie uzupełniaj dat ani numerów na podstawie formatu pola, nazwy dokumentu ani wiedzy ogólnej. Jeśli w tekście są dwa kandydaci do tego samego pola, wpisz null.

@@ -26,6 +26,52 @@ from lab.llm.prompts import PromptSet, schema_key_paths
 from lab.llm.text_prep import candidate_hints, prepare_ocr_text
 from lab.manifest import run_dir_name
 
+_TITLE_RE = re.compile(
+    r"^(?:(?:r\.\s*pr\.|radca\s+prawny|adw\.|mec\.|mgr|dr)\.?\s*)+",
+    re.IGNORECASE,
+)
+
+
+def _person_names(value: Any) -> list[str] | None:
+    if not isinstance(value, str) or "," not in value:
+        return None
+    parts = [part.strip() for part in value.split(",") if part.strip()]
+    if len(parts) < 2:
+        return None
+    cleaned = [_TITLE_RE.sub("", part).strip() for part in parts]
+    if any(not name or any(ch.isdigit() for ch in name) for name in cleaned):
+        return None
+    if any(len(name.split()) < 2 for name in cleaned):
+        return None
+    return cleaned
+
+
+def split_combined_names(obj: dict[str, Any]) -> dict[str, Any]:
+    """Split comma-joined person names into separate list objects where possible."""
+    names = _person_names(obj.get("imie_nazwisko"))
+    if names:
+        obj["imie_nazwisko"] = names[0]
+    for value in obj.values():
+        if isinstance(value, dict):
+            split_combined_names(value)
+        elif isinstance(value, list):
+            new_items: list[Any] = []
+            for item in value:
+                if not isinstance(item, dict):
+                    new_items.append(item)
+                    continue
+                extra_names = _person_names(item.get("imie_nazwisko"))
+                if extra_names:
+                    for name in extra_names:
+                        new_items.append(
+                            {**item, "imie_nazwisko": name}
+                        )
+                else:
+                    split_combined_names(item)
+                    new_items.append(item)
+            value[:] = new_items
+    return obj
+
 
 @dataclass
 class Extraction:
@@ -292,6 +338,7 @@ def extract_document(
                 raise ValueError("model response is not a JSON object")
             mapped = map_polish_labels(parsed, active_schema)
             obj = model.model_validate(coerce_list_fields(mapped, active_schema)).model_dump()
+            obj = split_combined_names(obj)
         except Exception as exc:
             result.error = f"{type(exc).__name__}: {exc}"[:1500]
             if attempt < retries:

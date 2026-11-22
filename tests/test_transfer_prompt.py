@@ -24,6 +24,12 @@ def test_global_rules_prefer_null_over_guessing() -> None:
         assert phrase in template
 
 
+def test_global_rules_limit_null_to_strict_values() -> None:
+    template = (REPO_ROOT / "configs/prompts/rules.j2").read_text(encoding="utf-8")
+    assert "Dotyczy wartości ścisłych" in template
+    assert "nie zamieniaj wyraźnej wartości na null" in template
+
+
 def test_odwolanie_prompt_separates_header_and_action_dates() -> None:
     template = (REPO_ROOT / "configs/prompts/extract_odwolanie.j2").read_text(
         encoding="utf-8"
@@ -41,6 +47,21 @@ def test_odwolanie_prompt_separates_header_and_action_dates() -> None:
         "późniejszych",
     ):
         assert phrase in template
+
+
+def test_odwolanie_prompt_accepts_month_names_for_header_date() -> None:
+    template = (REPO_ROOT / "configs/prompts/extract_odwolanie.j2").read_text(
+        encoding="utf-8"
+    )
+    assert "nazwę miesiąca" in template
+    assert "Nigdy daty nagłówka" in template
+
+
+def test_odwolanie_prompt_excludes_opz_from_reasons() -> None:
+    template = (REPO_ROOT / "configs/prompts/extract_odwolanie.j2").read_text(
+        encoding="utf-8"
+    )
+    assert "OPZ w treści zarzutów" in template
 
 
 def test_odwolanie_prompt_lists_every_enum_label() -> None:
@@ -70,13 +91,20 @@ def test_odwolanie_prompt_has_negative_locality_example() -> None:
 def test_transfer_prompt_requires_full_title() -> None:
     template = PROMPT_PATH.read_text(encoding="utf-8")
     assert "nie skracaj" in template
+    assert "kończy się numerem transakcji" in template
 
 
 def test_pelnomocnictwo_prompt_keeps_company_out_of_person_name() -> None:
     template = (REPO_ROOT / "configs/prompts/extract_pelnomocnictwo.j2").read_text(
         encoding="utf-8"
     )
-    for phrase in ("osoba_prawna", "Nigdy nazwa firmy", "r. pr.", "Podpisano"):
+    for phrase in (
+        "osoba_prawna",
+        "Nigdy nazwa firmy",
+        "r. pr.",
+        "Podpisano",
+        "Null tylko wtedy",
+    ):
         assert phrase in template
 
 
