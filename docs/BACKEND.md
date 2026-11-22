@@ -30,6 +30,86 @@ i nie w obrazie.
 Frontend osobno (dev): `cd frontend && npm install && npm run dev`
 (port 3000, proxy `/api` → 8000).
 
+### Frontend lokalnie, OCR + LLM na L4 — bez tunelu SSH
+
+Backend i LLM działają na L4. Frontend działa na Macu i przez `O2J_API_TARGET`
+celuje bezpośrednio w backend na L4. Port LLM (`8082`) zostaje prywatny —
+backend wywołuje go przez `localhost` na tej samej maszynie.
+
+**Na L4:**
+
+```bash
+# 1. LLM — tylko localhost:8082, nie wystawiaj publicznie
+uv run lab serve --model qwen3-8b-l4
+
+# 2. Backend — 0.0.0.0:8000, z API_TOKEN
+API_TOKEN=<token> \
+WEB_OCR_BACKEND=cuda \
+OCR_LLM_PROCESSOR=ocr_api.llm_processor:processor \
+OCR_LLM_MODEL=qwen3-8b-l4 \
+CORS_ORIGINS=http://localhost:3000 \
+uv run --extra gpu --extra serve uvicorn backend.main:app \
+  --host 0.0.0.0 --port 8000
+```
+
+W cloud security group otwórz tylko `8000`. `8082` zostaje zamknięty.
+
+**Na Macu:**
+
+```bash
+cd frontend
+O2J_API_TARGET=http://<L4-IP>:8000 \
+O2J_API_TOKEN=<token> \
+npm run dev
+```
+
+Vite proxy wysyła `/api` na `http://<L4-IP>:8000` i dodaje `X-API-Token`.
+Zmienne są czytane przez proces Node, nie trafiają do bundle'a JS.
+
+CLI z tego samego ustawienia:
+
+```bash
+uv run ocr-pdf2json plik.pdf \
+  --remote http://<L4-IP>:8000 \
+  --api-token <token> \
+  --save-ocr \
+  --out-dir output
+```
+
+### Backend lokalnie na Macu, OCR + LLM na L4
+
+Backend może zostać na Macu i przekazać cały plik do zdalnego serwisu
+`ocr-api`. Serwis na L4 robi OCR i LLM, więc lokalny proces nie ładuje wag
+i nie potrzebuje LLM servera.
+
+**Na L4** — postępuj według `docs/gpu-server/README.md`, w tym LLM na
+`localhost:8082`, a `ocr-api serve` z `OCR_LLM_PROCESSOR` i
+`OCR_LLM_MODEL=qwen3-8b-l4`. Wystaw tylko port `8000` z `API_KEY`.
+
+**Na Macu:**
+
+```bash
+API_TOKEN=<token> \
+WEB_OCR_BACKEND=remote \
+OCR_SERVICE_URL=http://<L4-IP>:8000 \
+OCR_SERVICE_KEY=<API_KEY> \
+O2J_DB_PATH=work/o2j.db \
+uv run --extra serve uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+
+Zostaw `OCR_LLM_PROCESSOR` puste — LLM jest już po stronie L4. Backend
+przesyła PDF do `POST <OCR_SERVICE_URL>/analyze` z nagłówkiem `X-API-Key`
+i przekazuje zwrócone `pages` oraz `llm` do swojego `SQLite`/API.
+
+Frontend zostaje domyślny (`O2J_API_TARGET` nie jest potrzebny), bo backend
+jest lokalny:
+
+```bash
+cd frontend && npm run dev
+```
+
+`OCR_REMOTE_TIMEOUT` (domyślnie `900` s) kontroluje timeout żądania.
+
 ## Zmienne środowiskowe
 
 Wszystkie opisane są w `.env.example`. Dwie łatwo pomylić:

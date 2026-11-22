@@ -104,10 +104,16 @@ python3 -c "from ocr_api.keygen import generate_key; print(generate_key())"
 docker run -d --name ocr-api --restart unless-stopped \
   --gpus all --network host \
   -e API_KEY=<API_KEY> \
+  -e OCR_MODEL=lightonai/LightOnOCR-3-4B \
   -e OCR_LLM_PROCESSOR=ocr_api.llm_processor:processor \
   -e OCR_LLM_MODEL=qwen3-8b-l4 \
   ocr-api
 ```
+
+`OCR_MODEL` wybiera wagi OCR. Domyślnie jest to
+`lightonai/LightOnOCR-3-4B` (BF16 na CUDA). `0.8B` z `models/` jest w formacie
+MLX i działa tylko przez `local-ai serve` na Macu — nie przez `ocr-api serve`.
+Aby użyć 0.8B na L4, potrzebny jest transformers-compatible checkpoint CUDA.
 
 `--network host` jest wymagany: `ocr_api` woła LLM-bridge po
 `http://localhost:8082/v1`, więc musi widzieć ten sam `localhost` co serwer

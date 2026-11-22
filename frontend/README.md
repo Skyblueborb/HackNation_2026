@@ -8,6 +8,9 @@ Docelowe obciążenie: jedna przeglądarka, ZIP z maks. 3 plikami PDF.
 ```bash
 npm install
 npm run dev      # http://localhost:3000, proxy /api -> http://localhost:8000
+
+# Backend na innej maszynie (np. L4), bez tunelu:
+O2J_API_TARGET=http://<L4-IP>:8000 O2J_API_TOKEN=<token> npm run dev
 npm run build    # tsc -b && vite build
 npm test         # vitest run
 npm run lint     # oxlint
@@ -22,6 +25,9 @@ Zmienne `VITE_*` są wstawiane do bundle'a i są widoczne dla każdego użytkown
   tokenu, chyba że ustawiono `O2J_DEV_NO_AUTH=1` wyłącznie dla lokalnego dev-u.
   W Dockerze nginx dodaje nagłówek z `O2J_API_TOKEN`; w Vite dev-proxy robi to
   zmienna `O2J_API_TOKEN` (czytana tylko po stronie Node).
+- `O2J_API_TARGET` ustawia cel proxy `/api` (domyślnie `http://localhost:8000`).
+  Ustaw `http://<L4-IP>:8000`, gdy backend działa na zdalnej maszynie. Ani
+  `O2J_API_TARGET`, ani `O2J_API_TOKEN` nie trafiają do bundle'a JS.
 - Dev-proxy Vite przekazuje `/api` bez modyfikacji nagłówków. Jeśli wdrożenie
   wymaga tokenu na poziomie proxy, ustaw go po stronie proxy/backu (np. nginx
   lub `docker-compose.yml`), nigdy w kodzie klienta.

@@ -2,8 +2,9 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-// Token jest czytany tylko przez proces dev-servera (Node), nigdy przez bundle.
+// Values are read by the dev-server process (Node), never by the JS bundle.
 const apiToken = process.env.O2J_API_TOKEN || '';
+const apiTarget = process.env.O2J_API_TARGET || 'http://localhost:8000';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -13,7 +14,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: apiTarget,
         changeOrigin: true,
         headers: apiToken ? { 'X-API-Token': apiToken } : {},
       },

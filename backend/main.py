@@ -7,6 +7,7 @@ Dane dokumentów nie są nikdy częścią repo ani obrazu Dockera. Wszystkie
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
 import secrets
@@ -89,12 +90,42 @@ def _extractor():
     return CudaBackend()
 
 
+async def _run_remote_ocr(data: bytes, filename: str | None) -> dict:
+    """Forward the PDF to an OCR+LLM service on another host."""
+    import httpx
+
+    base_url = os.environ.get("OCR_SERVICE_URL", "").rstrip("/")
+    if not base_url:
+        raise RuntimeError(
+            "OCR_SERVICE_URL is required when WEB_OCR_BACKEND=remote"
+        )
+    api_key = os.environ.get("OCR_SERVICE_KEY", "")
+    timeout = float(os.environ.get("OCR_REMOTE_TIMEOUT", "900"))
+    headers = {"X-API-Key": api_key} if api_key else {}
+    try:
+        response = await asyncio.to_thread(
+            httpx.post,
+            f"{base_url}/analyze",
+            files={"file": (filename or "upload.pdf", data, "application/pdf")},
+            headers=headers,
+            timeout=timeout,
+        )
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"OCR service error: {exc}") from exc
+    return response.json()
+
+
 async def _run_extraction(data: bytes, filename: str | None) -> dict:
-    """Dispatch to the text-layer reader or to an image-OCR backend.
+    """Dispatch to the text-layer reader, an image backend, or remote OCR.
 
     `OCR_BACKEND=text` forces the text layer for every upload; the image
-    backends still prefer it per-document and OCR only scans.
+    backends still prefer it per-document and OCR only scans. `remote`
+    forwards the whole job to another host, which returns pages and the
+    optional LLM result.
     """
+    if OCR_BACKEND == "remote":
+        return await _run_remote_ocr(data, filename)
     if OCR_BACKEND == "text":
         from ocr_common.textlayer import run_textlayer_async
 
