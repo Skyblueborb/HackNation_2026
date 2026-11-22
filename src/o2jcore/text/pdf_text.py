@@ -10,9 +10,10 @@ Three extractors are supported, all free of AGPL-licensed dependencies
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 Extractor = Literal["pdfium", "pdfplumber", "pdfplumber_layout"]
 
@@ -27,9 +28,19 @@ class PageText:
     height: float
 
 
+# PDFium is a native C++ library and is not thread-safe. Every call into it in
+# this process must hold this lock, including page rendering in ocr_common.
+pdfium_lock = threading.Lock()
+
+
 def _extract_pdfium(pdf_path: Path) -> list[PageText]:
     import pypdfium2 as pdfium
 
+    with pdfium_lock:
+        return _extract_pdfium_locked(pdf_path, pdfium)
+
+
+def _extract_pdfium_locked(pdf_path: Path, pdfium: Any) -> list[PageText]:
     pages: list[PageText] = []
     pdf = pdfium.PdfDocument(str(pdf_path))
     try:

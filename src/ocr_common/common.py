@@ -7,6 +7,8 @@ import pypdfium2
 from fastapi import Header, HTTPException
 from PIL import Image
 
+from o2jcore.text.pdf_text import pdfium_lock
+
 logger = logging.getLogger("ocr")
 
 # One OCR model per process: serialize rendering/generation.
@@ -51,6 +53,14 @@ def configure_logging(verbose: bool = False) -> None:
 
 def render_pages(
     data: bytes, dpi: int = 400, max_edge: int | None = None
+) -> list[Image.Image]:
+    """Render PDF pages; PDFium calls are serialized process-wide."""
+    with pdfium_lock:
+        return _render_pages_unlocked(data, dpi, max_edge)
+
+
+def _render_pages_unlocked(
+    data: bytes, dpi: int, max_edge: int | None
 ) -> list[Image.Image]:
     """Render PDF pages at a scale bounded by max_edge. No text layer is read.
 

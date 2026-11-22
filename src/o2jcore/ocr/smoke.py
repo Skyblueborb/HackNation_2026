@@ -14,6 +14,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from o2jcore.text.pdf_text import pdfium_lock
+
 import numpy as np
 from PIL import Image, ImageFilter
 
@@ -75,20 +77,21 @@ def render_page_png(pdf_path: Path, page_number: int, dpi: int = 300) -> Image.I
         raise ValueError(f"page_number must be 1-indexed and >= 1, got {page_number}")
 
     scale = dpi / 72.0
-    pdf = pdfium.PdfDocument(str(pdf_path))
-    try:
-        if page_number > len(pdf):
-            raise ValueError(
-                f"page {page_number} out of range for {pdf_path} ({len(pdf)} pages)"
-            )
-        page = pdf[page_number - 1]
+    with pdfium_lock:
+        pdf = pdfium.PdfDocument(str(pdf_path))
         try:
-            bitmap = page.render(scale=scale)
-            pil_image = bitmap.to_pil()
+            if page_number > len(pdf):
+                raise ValueError(
+                    f"page {page_number} out of range for {pdf_path} ({len(pdf)} pages)"
+                )
+            page = pdf[page_number - 1]
+            try:
+                bitmap = page.render(scale=scale)
+                pil_image = bitmap.to_pil()
+            finally:
+                page.close()
         finally:
-            page.close()
-    finally:
-        pdf.close()
+            pdf.close()
     return pil_image.convert("RGB")
 
 
