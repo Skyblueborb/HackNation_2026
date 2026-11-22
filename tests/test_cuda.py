@@ -69,6 +69,8 @@ def install_fake_cuda(monkeypatch):
             return Processor()
 
     fake_torch = SimpleNamespace(
+        __version__="2.14.1",
+        version=SimpleNamespace(cuda="13.2"),
         bfloat16="bf16",
         cuda=SimpleNamespace(is_available=lambda: True),
         inference_mode=contextlib.nullcontext,

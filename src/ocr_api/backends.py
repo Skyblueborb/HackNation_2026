@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import os
+import time
 
 from PIL import Image
+
+from ocr_common.common import logger
 
 MODEL_ID = os.environ.get("OCR_MODEL", "lightonai/LightOnOCR-3-0.8B")
 MAX_TOKENS = int(os.environ.get("OCR_MAX_TOKENS", "2048"))
@@ -42,6 +45,13 @@ def cuda_session():
         )
         model = model.to("cuda").eval()
         processor = AutoProcessor.from_pretrained(MODEL_ID)
+        logger.info(
+            "cuda_session ready: model=%s attn=%s torch=%s cuda=%s",
+            MODEL_ID,
+            ATTN_IMPL,
+            torch.__version__,
+            torch.version.cuda,
+        )
         _session = (model, processor)
     return _session
 
@@ -53,6 +63,7 @@ class CudaBackend:
         if PROMPT:
             content.append({"type": "text", "text": PROMPT})
         conversation = [{"role": "user", "content": content}]
+        started = time.perf_counter()
         inputs = processor.apply_chat_template(
             conversation,
             add_generation_prompt=True,
@@ -61,11 +72,21 @@ class CudaBackend:
             return_tensors="pt",
             enable_thinking=False,
         ).to("cuda")
+        prepared = time.perf_counter()
         with torch.inference_mode():
             output = model.generate(
                 **inputs,
                 max_new_tokens=MAX_TOKENS,
                 do_sample=False,
             )
+        generated_at = time.perf_counter()
         generated = output[0, inputs["input_ids"].shape[1] :]
-        return processor.decode(generated, skip_special_tokens=True).strip()
+        text = processor.decode(generated, skip_special_tokens=True).strip()
+        logger.info(
+            "ocr generate: prep=%.2fs generate=%.2fs tokens=%d chars=%d",
+            prepared - started,
+            generated_at - prepared,
+            generated.shape[-1],
+            len(text),
+        )
+        return text
