@@ -3,12 +3,16 @@
 Dokładna, skopiuj-wklej instrukcja na świeżym Ubuntu 24.04 z kartą NVIDIA
 (L4, 24 GB VRAM — profil `qwen3-8b-l4` w `configs/models.yaml` jest dobrany
 pod ten GPU). Kontekst architektury: `docs/superpowers/specs/2026-11-21-cloud-gpu-split-design.md`.
-Jak się z tym łączyć z własnej maszyny (tunel SSH, zero zmian w kodzie):
-`docs/llm-runtime.md#remote-gpu-box--ssh-tunnel-no-code-changes`.
 
-Zasada bezpieczeństwa obowiązująca przez całą instrukcję: **na firewallu
-publicznie otwarty jest tylko port 22.** `llama-server` (8082) nie ma żadnej
-autoryzacji — nigdy nie wystawiaj go na świat.
+Uruchomienie serwerów i połączenie z klienta robią dwa skrypty
+(`scripts/gpu-server-bootstrap.sh`, `scripts/connect-gpu.sh`) — kroki 1-2
+poniżej to jednorazowe przygotowanie maszyny, krok 3 to już tylko ich
+odpalenie.
+
+Zasada bezpieczeństwa: `ocr-api serve` wystawia port 8000 publicznie
+(`--host 0.0.0.0`) i chroni go tylko `API_KEY`/`X-API-Key` — nie ma za nim
+firewalla ani SSH. `llama-server` (8082) zostaje na `localhost` i nie ma
+żadnej autoryzacji — nigdy nie wystawiaj tego portu na świat.
 
 ## 0. Wymagania
 
@@ -27,8 +31,9 @@ sensu robić.
 
 ```bash
 sudo ufw allow OpenSSH
+sudo ufw allow 8000/tcp    # port ocr-api, chroniony przez API_KEY
 sudo ufw enable
-sudo ufw status    # powinno pokazać tylko 22/tcp
+sudo ufw status
 ```
 
 ## 2. uv, Python 3.13, repo
@@ -78,72 +83,44 @@ curl http://localhost:8082/v1/chat/completions \
   -d '{"model":"qwen3-8b-l4","messages":[{"role":"user","content":"Powiedz jedno zdanie po polsku. /no_think"}],"temperature":0}'
 ```
 
-## 4. `ocr_api` — OCR obrazowy na GPU (opcjonalnie)
+Upewnij się, że `.env` na serwerze ma ustawiony `API_KEY` (dowolny sekret —
+`python3 -c "from ocr_api.keygen import generate_key; print(generate_key())"`).
 
-Potrzebne tylko gdy demo musi czytać skany bez warstwy tekstowej (model
-wizyjny `lightonai/LightOnOCR-3-4B` na CUDA). Dla samego zbioru konkursowego
-zwykle wystarcza `WEB_OCR_BACKEND=text` (warstwa tekstowa PDF-a, bez GPU) —
-pomiń tę sekcję, jeśli o to idzie.
+## 4. Start serwerów (GPU box)
 
 ```bash
-sudo apt install -y docker.io
-curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
-  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
-sudo apt update && sudo apt install -y nvidia-container-toolkit
-sudo nvidia-ctk runtime configure --runtime=docker
-sudo systemctl restart docker
-
 cd ~/o2j-lab
-docker build -t ocr-api -f Dockerfile.gpu .
-
-python3 -c "from ocr_api.keygen import generate_key; print(generate_key())"
-# zapisz wygenerowany klucz jako <API_KEY> niżej
-
-docker run -d --name ocr-api --restart unless-stopped \
-  --gpus all --network host \
-  -e API_KEY=<API_KEY> \
-  -e OCR_MODEL=lightonai/LightOnOCR-3-4B \
-  -e OCR_LLM_PROCESSOR=ocr_api.llm_processor:processor \
-  -e OCR_LLM_MODEL=qwen3-8b-l4 \
-  ocr-api
+tmux new -s gpu
+bash scripts/gpu-server-bootstrap.sh
+# Ctrl-B D, żeby odpiąć tmux bez zabijania serwerów
 ```
 
-`OCR_MODEL` wybiera wagi OCR. Domyślnie jest to
-`lightonai/LightOnOCR-3-4B` (BF16 na CUDA). `0.8B` z `models/` jest w formacie
-MLX i działa tylko przez `local-ai serve` na Macu — nie przez `ocr-api serve`.
-Aby użyć 0.8B na L4, potrzebny jest transformers-compatible checkpoint CUDA.
+Skrypt startuje `lab serve --model qwen3-8b-l4` (port 8082, tylko localhost)
+i `ocr-api serve --host 0.0.0.0 --port 8000` (OCR obrazowy, model
+`lightonai/LightOnOCR-3-4B` na CUDA), czeka aż `/health` odpowie, i na końcu
+drukuje gotową komendę do wklejenia na klienta:
 
-`--network host` jest wymagany: `ocr_api` woła LLM-bridge po
-`http://localhost:8082/v1`, więc musi widzieć ten sam `localhost` co serwer
-z kroku 3.
-
-Sprawdzenie na serwerze:
-
-```bash
-curl http://localhost:8000/health
-curl http://localhost:8000/analyze -H "X-API-Key: <API_KEY>" -F file=@test.pdf
+```
+=== skopiuj na klienta: ============================================
+bash scripts/connect-gpu.sh <public-ip>:8000 <API_KEY>
+=====================================================================
 ```
 
-## 5. Połączenie z własnej maszyny
+## 5. Połączenie z własnej maszyny (klient)
 
 ```bash
-ssh -N -L 8082:localhost:8082 -L 8000:localhost:8000 \
-    -o ServerAliveInterval=30 <user>@<gpu-host>
+bash scripts/connect-gpu.sh <public-ip>:8000 <API_KEY>
 ```
 
-Zostaw to działające w jednym terminalu (albo jako usługę w tle). Z
-otwartym tunelem `http://localhost:8082` i `http://localhost:8000` na Twojej
-maszynie to serwer GPU — cała istniejąca konfiguracja projektu
-(`OCR_LLM_MODEL=qwen3-8b-l4` w `.env`, `lab run`/`lab predict-one`/`lab sweep`,
-`backend/main.py`) działa bez żadnych zmian w kodzie.
+Ustawia `WEB_OCR_BACKEND=remote`, `OCR_SERVICE_URL`, `OCR_SERVICE_KEY` i
+startuje lokalny `backend/main.py` na `127.0.0.1:8000` — cały OCR+LLM idzie
+przez `POST /analyze` na serwer GPU, nagłówek `X-API-Key`.
 
-Weryfikacja z laptopa (po otwarciu tunelu):
+Weryfikacja bez uruchamiania backendu:
 
 ```bash
-curl http://localhost:8082/v1/chat/completions -H "Content-Type: application/json" \
-  -d '{"model":"qwen3-8b-l4","messages":[{"role":"user","content":"test /no_think"}],"temperature":0}'
+curl http://<public-ip>:8000/health
+curl http://<public-ip>:8000/analyze -H "X-API-Key: <API_KEY>" -F file=@test.pdf
 ```
 
 ## Rozwiązywanie problemów
@@ -153,5 +130,5 @@ curl http://localhost:8082/v1/chat/completions -H "Content-Type: application/jso
 | `nvidia-smi: command not found` | sterownik nie zainstalowany — krok 1 |
 | `llama-server not found in PATH` | nie zbudowano/nie zlinkowano binarki — krok 3 |
 | `ensure_server` wisi >900s | pobieranie modelu z HF trwa długo przy pierwszym starcie; sprawdź `work/servers/qwen3-8b-l4.log` |
-| `docker run --gpus all` błąd `unknown flag` | `nvidia-container-toolkit` nie skonfigurowany — krok 4 |
-| Tunel się rozłącza | dodaj `-o ServerAliveInterval=30 -o ServerAliveCountMax=3`, albo `autossh` |
+| `gpu-server-bootstrap.sh` nie drukuje komendy klienta | `ocr-api` nie wstał — sprawdź logi w tmux, `curl localhost:8000/health` |
+| klient dostaje 401/403 | `API_KEY` na serwerze ≠ `OCR_SERVICE_KEY` na kliencie |

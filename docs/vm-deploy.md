@@ -56,9 +56,10 @@ sudo systemctl enable --now o2j-llm-tunnel
 curl -s http://localhost:8082/health      # musi odpowiedzieć
 ```
 
-Po stronie serwera GPU `llama-server` musi startować sam po restarcie
-(`systemctl enable` albo kontener z `restart: unless-stopped`) — inaczej tunel
-będzie żył, a model nie.
+Po stronie serwera GPU `llama-server` musi startować sam po restarcie —
+`scripts/gpu-server-bootstrap.sh` (patrz `docs/gpu-server/README.md`) startuje
+go pod `tmux`, ale to nie przeżyje restartu bez `systemctl enable` na usłudze,
+która go woła — inaczej tunel będzie żył, a model nie.
 
 ## 3. Obrazy Dockera zbudowane z góry
 

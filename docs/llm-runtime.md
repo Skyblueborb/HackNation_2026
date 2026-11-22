@@ -69,20 +69,23 @@ See `docs/llm-module-contract.md` for the processor contract.
 case. Work with only one profile at a time; the CLI stops only the process it
 started. Logs go to `<work_root>/servers/<model-id>.log`.
 
-## Remote GPU box — SSH tunnel, no code changes
+## Remote GPU box — public `ocr-api`, key-protected
 
-`llama-server` has no auth, so never expose port 8082 (or `ocr_api`'s 8000)
-to the internet. Instead, run `lab serve --model qwen3-8b-l4` on the rented
-GPU box (bound to its own `localhost`) and open a tunnel from your machine:
+`llama-server` (8082) has no auth and never leaves `localhost`. `ocr_api`
+(8000) is the only thing exposed, protected by `API_KEY`/`X-API-Key`. Two
+scripts drive the whole thing — see `docs/gpu-server/README.md`:
 
 ```bash
-ssh -N -L 8082:localhost:8082 -L 8000:localhost:8000 \
-    -o ServerAliveInterval=30 <user>@<gpu-host>
+# on the GPU box (starts lab serve + ocr-api serve, prints the client command)
+bash scripts/gpu-server-bootstrap.sh
+
+# on your machine (sets WEB_OCR_BACKEND=remote + OCR_SERVICE_URL/KEY,
+# starts backend/main.py pointed at the GPU box)
+bash scripts/connect-gpu.sh <public-ip>:8000 <API_KEY>
 ```
 
-With the tunnel open, `http://localhost:8082/v1` and `http://localhost:8000`
-resolve to the remote box, so everything that already targets those ports
-works unmodified: `lab run` / `lab predict-one` / `lab sweep` with
-`OCR_LLM_MODEL=qwen3-8b-l4`, `ocr-api serve` with the same env vars from the
-section above, and `backend/main.py` with `OCR_LLM_MODEL=qwen3-8b-l4` (see
-`.env.example`).
+This only covers `backend/main.py` (`WEB_OCR_BACKEND=remote`). `lab run` /
+`lab predict-one` / `lab sweep` still talk to `llama-server` directly via
+`OCR_LLM_MODEL=qwen3-8b-l4` — those need port 8082 reachable too, e.g. an SSH
+tunnel (`ssh -N -L 8082:localhost:8082 <user>@<gpu-host>`) since that port
+stays unauthenticated and must not be exposed publicly.
