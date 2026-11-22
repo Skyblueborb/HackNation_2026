@@ -6,7 +6,7 @@ import os
 
 from PIL import Image
 
-MODEL_ID = "lightonai/LightOnOCR-3-4B"
+MODEL_ID = os.environ.get("OCR_MODEL", "lightonai/LightOnOCR-3-4B")
 MAX_TOKENS = int(os.environ.get("OCR_MAX_TOKENS", "2048"))
 ATTN_IMPL = os.environ.get("OCR_ATTN_IMPL", "sdpa")
 # LightOnOCR-3: "" = full-page transcription; "grounding" = bounding boxes only.
