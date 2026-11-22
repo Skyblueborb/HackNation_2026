@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { extractZipFiles, MAX_ZIP_BYTES, type ExtractedFile } from './utils/zip';
-import { analyzeDocument, ingestDocument, listDocuments, getClientToken } from './api';
+import { analyzeDocument, ingestDocument, getClientToken } from './api';
 import { hydrateForms } from './hydrate';
 import {
   type DocClass,
@@ -109,7 +109,6 @@ export default function App() {
   const [showJsonModal, setShowJsonModal] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [highContrast, setHighContrast] = useState(false);
 
   // Object URL-e PDF-ów zwalniamy przy każdej zamianie dokumentów i wyjściu do menu.
   const revokeSlotUrls = (slots: DocumentSlot[]) => {
@@ -130,150 +129,11 @@ export default function App() {
     };
   }, [showJsonModal]);
 
-  const toggleContrast = () => {
-    const next = !highContrast;
-    setHighContrast(next);
-    if (next) {
-      document.body.classList.add('high-contrast');
-    } else {
-      document.body.classList.remove('high-contrast');
-    }
-  };
-
-  const setFontSize = (scale: number) => {
-    document.documentElement.style.setProperty('--base-font-size', `${scale}px`);
-  };
-
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 B';
     const units = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
     return (bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 2) + ' ' + units[i];
-  };
-
-  // Wypełnienie przykładowymi danymi ze screenshotów z oczekiwane-json
-  const fillSampleGoldData = () => {
-    if (activeDoc.doc_class === 'odwolanie') {
-      setOdwolanieData({
-        OdwolanieKIO: {
-          data: '13.10.2025',
-          czynnosc_dzien: '01.10.2025',
-          czynnosc_powod_id: '4',
-          czynnosc_opis: 'Publikacja specyfikacji warunków zamówienia (SWZ)',
-          miejscowosc: 'Pruszków',
-        },
-        Odwolujacy: {
-          krs: '0000054580',
-          nazwa: 'STRABAG Sp. z o.o.',
-          nip: '',
-          regon: '',
-          przez_pelnomocnika: '1',
-          pelnomocnik_imie_nazwisko: 'Marcel Kielce',
-          pelnomocnik_nazwa: 'Kancelaria Radców Prawnych',
-          pelnomocnik_mail: 'info@prawnik.sy',
-        },
-        Zamawiajacy: {
-          krs: '',
-          nazwa: 'Filharmonia Pomorska im. Ignacego Jana Paderewskiego',
-          nip: '5540240549',
-          regon: '000279077',
-          prowadzacy_postepowanie: 'null',
-        },
-        ZamowieniePubliczne: {
-          numer_bzp: '',
-          numer_postepowania: '',
-          numer_ted: '641651-2025',
-          tytul: 'Wykonanie robót budowlanych oraz dostawa i montaż wyposażenia w ramach zadania, polegającego na przebudowie i rozbudowie Filharmonii Pomorskiej w Bydgoszczy',
-        },
-      });
-    } else if (activeDoc.doc_class === 'pelnomocnictwo') {
-      setPelnomocnictwoData({
-        mocodawca: {
-          typ: 'osoba_prawna',
-          nazwa: 'FAMBUD',
-          nip: '8361772283',
-          krs: '0000244633',
-          imie_nazwisko: '',
-          podpisujacy_imie_nazwisko: 'Paweł Podolski',
-        },
-        pelnomocnicy: {
-          imie_nazwisko: 'Krystyna Mazowiecka',
-          pesel: '85120133547',
-        },
-      });
-    } else {
-      setPrzelewData({
-        przelew_bankowy: {
-          data_operacji: '09.10.2025',
-          kwota: '10000.00',
-          na_rachunek: '60 1010 1010 0081 3622 3100 0000',
-          numer_transakcji: '',
-          tytul: 'WPIS OD ODW., ZAM: ZESPÓŁ SZKÓŁ CENTRUM KSZTAŁCENIA ROLNICZEGO IM. KEN W HENRYKOWIE, ZSCKR/822/2025, BUDOWA DR. POŻAR.',
-          z_rachunku: '50 8020 5460 0000 5888 7442 44',
-        },
-      });
-    }
-    setSaveNotification(`Wstawiono dane dla: ${docSlots[currentDocIndex].title}`);
-    setTimeout(() => setSaveNotification(null), 3000);
-  };
-
-  const clearCurrentData = () => {
-    if (activeDoc.doc_class === 'odwolanie') {
-      setOdwolanieData({
-        OdwolanieKIO: { data: '', czynnosc_dzien: '', czynnosc_powod_id: '', czynnosc_opis: '', miejscowosc: '' },
-        Odwolujacy: { krs: '', nazwa: '', nip: '', regon: '', przez_pelnomocnika: '1', pelnomocnik_imie_nazwisko: '', pelnomocnik_nazwa: '', pelnomocnik_mail: '' },
-        Zamawiajacy: { krs: '', nazwa: '', nip: '', regon: '', prowadzacy_postepowanie: 'null' },
-        ZamowieniePubliczne: { numer_bzp: '', numer_postepowania: '', numer_ted: '', tytul: '' },
-      });
-    } else if (activeDoc.doc_class === 'pelnomocnictwo') {
-      setPelnomocnictwoData({
-        mocodawca: { typ: 'osoba_prawna', nazwa: '', nip: '', krs: '', imie_nazwisko: '', podpisujacy_imie_nazwisko: '' },
-        pelnomocnicy: { imie_nazwisko: '', pesel: '' },
-      });
-    } else {
-      setPrzelewData({
-        przelew_bankowy: { data_operacji: '', kwota: '', na_rachunek: '60 1010 1010 0081 3622 3100 0000', numer_transakcji: '', tytul: '', z_rachunku: '' },
-      });
-    }
-  };
-
-  // Pobranie wyników z bazy danych backendu (jeśli backend jest uruchomiony).
-  const loadFromBackend = async () => {
-    try {
-      const docs = await listDocuments();
-      if (docs.length === 0) {
-        setSaveNotification('W bazie nie ma jeszcze żadnych wyników.');
-      } else {
-        const empty = emptyForms();
-        const mapped: DocumentSlot[] = renumberTitles(docs.map((d, i) => {
-          const forms = hydrateForms([d]);
-          const cls = d.doc_class;
-          return {
-            id: d.client_doc_id ?? `backend-${i}`,
-            doc_class: cls,
-            title: '',
-            categoryLabel: '',
-            defaultFilename: d.source_name ?? `${cls}.pdf`,
-            sourceName: d.source_name ?? '',
-            data: {
-              odwolanie: forms.odwolanie ?? empty.odwolanie,
-              pelnomocnictwo: forms.pelnomocnictwo ?? empty.pelnomocnictwo,
-              przelew: forms.przelew ?? empty.przelew,
-            },
-          };
-        }));
-        revokeSlotUrls(docSlots);
-        setDocSlots(mapped);
-        setCurrentDocIndex(0);
-        setOdwolanieData(mapped[0].data.odwolanie);
-        setPelnomocnictwoData(mapped[0].data.pelnomocnictwo);
-        setPrzelewData(mapped[0].data.przelew);
-        setSaveNotification(`Wczytano ${docs.length} plików z bazy danych.`);
-      }
-    } catch {
-      setSaveNotification('Nie udało się połączyć z bazą danych (backend może być wyłączony).');
-    }
-    setTimeout(() => setSaveNotification(null), 4000);
   };
 
   const handleFileSelection = (file: File) => {
@@ -542,53 +402,7 @@ export default function App() {
 
   return (
     <>
-      {/* 1. TOPBAR GOV.PL */}
-      <header className="gov-topbar">
-        <div className="gov-container">
-          <div className="gov-topbar-inner">
-            <div className="gov-portal-brand">
-              <span className="gov-portal-mark">gov.pl</span>
-              <span className="gov-portal-subtitle">Serwis Rzeczypospolitej Polskiej</span>
-            </div>
-            <div className="gov-a11y-tools" role="group" aria-label="Narzędzia dostępności">
-              <button
-                type="button"
-                className="a11y-btn"
-                onClick={() => setFontSize(16)}
-                aria-label="Domyślny rozmiar tekstu"
-              >
-                A
-              </button>
-              <button
-                type="button"
-                className="a11y-btn"
-                onClick={() => setFontSize(18)}
-                aria-label="Średni rozmiar tekstu"
-              >
-                A+
-              </button>
-              <button
-                type="button"
-                className="a11y-btn"
-                onClick={() => setFontSize(20)}
-                aria-label="Duży rozmiar tekstu"
-              >
-                A++
-              </button>
-              <button
-                type="button"
-                className="a11y-btn contrast-toggle"
-                onClick={toggleContrast}
-                aria-pressed={highContrast}
-              >
-                Kontrast
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* 2. GŁÓWNA ZAWARTOŚĆ */}
+      {/* GŁÓWNA ZAWARTOŚĆ */}
       <main className="gov-main">
         {/* ======================================================== */}
         {/* WIDOK 1: EKRAN WCZYTYWANIA ARCHIWUM .ZIP                 */}
@@ -596,7 +410,7 @@ export default function App() {
         {stage === 'upload' && (
           <div className="gov-container">
             <div className="service-header">
-              <h1 className="service-title">Odwołania2json</h1>
+              <h1 className="service-title">E-peel</h1>
             </div>
 
             <p className="service-description">
@@ -897,30 +711,6 @@ export default function App() {
                     </h2>
                   </div>
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      type="button"
-                      className="gov-btn-secondary"
-                      onClick={fillSampleGoldData}
-                      title="Wstaw przykładowe dane z wzorca"
-                    >
-                      Wstaw przykład
-                    </button>
-                    <button
-                      type="button"
-                      className="gov-btn-secondary"
-                      onClick={clearCurrentData}
-                      title="Wyczyść wszystkie pola"
-                    >
-                      Wyczyść
-                    </button>
-                    <button
-                      type="button"
-                      className="gov-btn-secondary"
-                      onClick={loadFromBackend}
-                      title="Pobierz wyniki z bazy danych backendu"
-                    >
-                      Wczytaj z bazy
-                    </button>
                     <button
                       type="button"
                       className="gov-btn-secondary"
@@ -1757,8 +1547,7 @@ export default function App() {
                 Gotowe!
               </h1>
               <p style={{ margin: '16px auto 8px', maxWidth: '560px', fontSize: '1.0625rem', color: 'var(--gov-text-muted)' }}>
-                Wszystkie dokumenty zostały zapisane w bazie danych, a plik
-                <strong> odwolania2json.json</strong> został pobrany na Twój komputer.
+                Plik <strong>odwolania2json.json</strong> został pobrany na Twój komputer.
               </p>
               <p style={{ margin: '0 auto 28px', maxWidth: '560px', fontSize: '0.9375rem', color: 'var(--gov-text-muted)' }}>
                 Dane poprawione przez Ciebie trafiły też do magazynu poprawek —
@@ -1880,7 +1669,7 @@ export default function App() {
       <footer className="gov-footer">
         <div className="gov-container">
           <div className="gov-footer-inner">
-            <span>Odwołania2json &bull; Moduł konwersji dokumentacji procesowej UZP</span>
+            <span>E-peel &bull; Moduł konwersji dokumentacji procesowej UZP</span>
             <span>Zgodność ze standardem WCAG 2.1</span>
           </div>
         </div>
