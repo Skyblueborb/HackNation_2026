@@ -996,6 +996,7 @@ source = { editable = "." }
 dependencies = [
     { name = "jinja2" },
     { name = "jiwer" },
+    { name = "numpy" },
     { name = "openai" },
     { name = "pdfplumber" },
     { name = "pillow" },
@@ -1044,6 +1045,7 @@ requires-dist = [
     { name = "jiwer", marker = "extra == 'lab'" },
     { name = "matplotlib", marker = "extra == 'lab'" },
     { name = "mlx-vlm", marker = "extra == 'local'" },
+    { name = "numpy", specifier = ">=2.1" },
     { name = "numpy", marker = "extra == 'lab'", specifier = ">=2.1" },
     { name = "openai" },
     { name = "opencv-python-headless", marker = "extra == 'lab'" },
