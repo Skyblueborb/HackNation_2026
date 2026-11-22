@@ -119,7 +119,10 @@ bash scripts/connect-gpu.sh <L4-IP>:8000 <OCR_API_KEY> <BACKEND_API_TOKEN>
 
 Jeśli trzeci argument zostanie pominięty, skrypt wygeneruje token backendu
 i wypisze go na ekranie. Skrypt ustawia `O2J_API_TOKEN` dla Vite, więc frontend
-od razu wysyła poprawny `X-API-Token`. Ctrl-C zatrzymuje backend i frontend.
+od razu wysyła poprawny `X-API-Token`. Domyślnie backend i frontend działają
+w odłączonej sesji tmux `o2j-connect` — skrypt wypisuje komendy `attach` i
+`stop`. Dodaj `--no-tmux`, żeby procesy były dziećmi terminala i zatrzymywały
+się przez Ctrl-C.
 
 ## Zmienne środowiskowe
 
