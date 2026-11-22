@@ -110,6 +110,26 @@ szybką ścieżkę `pdfplumber`, uruchom:
 OCR_FORCE_IMAGE=0 bash scripts/gpu-server-bootstrap.sh
 ```
 
+Domyślne ustawienia szybkości na L4:
+
+```text
+OCR_DESKEW=0        # nie robi 4× Tesseract przed właściwym OCR
+OCR_MAX_EDGE=1536   # mniejszy obraz wejściowy niż 2048
+```
+
+Można je nadpisać env. `OCR_DESKEW=0` nie wyłącza OCR — wyłącza tylko korektę
+rotacji. Właściwy model LightOnOCR nadal działa na obrazie.
+
+Zoptymalizowane kernele Qwen3.5 instaluje:
+
+```bash
+sudo bash scripts/gpu-install-kernels.sh
+```
+
+Skrypt naprawia konflikt źródeł CUDA w apt, instaluje CUDA 13.2, potem
+przebudowuje `causal-conv1d` i `flash-linear-attention` pod CUDA torch 13.2.
+Po instalacji zrestartuj stos GPU.
+
 ```
 === terminal 1 — backend (na kliencie): =============================
 bash scripts/connect-gpu-backend.sh <public-ip>:8000 <API_KEY> <BACKEND_API_TOKEN>

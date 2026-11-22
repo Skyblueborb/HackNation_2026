@@ -18,6 +18,8 @@ BACKEND_TOKEN="$(openssl rand -hex 32)"
 
 OCR_MODEL="${OCR_MODEL:-lightonai/LightOnOCR-3-0.8B}" \
 OCR_FORCE_IMAGE="${OCR_FORCE_IMAGE:-1}" \
+OCR_DESKEW="${OCR_DESKEW:-0}" \
+OCR_MAX_EDGE="${OCR_MAX_EDGE:-1536}" \
 OCR_LLM_PROCESSOR=ocr_api.llm_processor:processor \
 OCR_LLM_MODEL=qwen3-8b-l4 \
 uv run --extra gpu --extra serve ocr-api serve --host 0.0.0.0 --port 8000 &
