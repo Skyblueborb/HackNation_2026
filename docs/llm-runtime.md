@@ -79,9 +79,11 @@ scripts drive the whole thing — see `docs/gpu-server/README.md`:
 # on the GPU box (starts lab serve + ocr-api serve, prints the client command)
 bash scripts/gpu-server-bootstrap.sh
 
-# on your machine (sets WEB_OCR_BACKEND=remote + OCR_SERVICE_URL/KEY,
-# starts backend/main.py pointed at the GPU box)
-bash scripts/connect-gpu.sh <public-ip>:8000 <API_KEY>
+# terminal 1 on your machine — backend pointed at the GPU box
+bash scripts/connect-gpu-backend.sh <public-ip>:8000 <API_KEY> <BACKEND_API_TOKEN>
+
+# terminal 2 on your machine — frontend with the backend token injected
+bash scripts/connect-gpu-frontend.sh <BACKEND_API_TOKEN>
 ```
 
 This only covers `backend/main.py` (`WEB_OCR_BACKEND=remote`). `lab run` /

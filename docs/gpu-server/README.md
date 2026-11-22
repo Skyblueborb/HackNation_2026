@@ -4,8 +4,9 @@ Dokładna, skopiuj-wklej instrukcja na świeżym Ubuntu 24.04 z kartą NVIDIA
 (L4, 24 GB VRAM — profil `qwen3-8b-l4` w `configs/models.yaml` jest dobrany
 pod ten GPU). Kontekst architektury: `docs/superpowers/specs/2026-11-21-cloud-gpu-split-design.md`.
 
-Uruchomienie serwerów i połączenie z klienta robią dwa skrypty
-(`scripts/gpu-server-bootstrap.sh`, `scripts/connect-gpu.sh`) — kroki 1-2
+Uruchomienie serwerów i połączenie z klienta robią trzy skrypty:
+`scripts/gpu-server-bootstrap.sh` na L4 oraz `scripts/connect-gpu-backend.sh`
+i `scripts/connect-gpu-frontend.sh` w dwóch terminalach na kliencie. Kroki 1-2
 poniżej to jednorazowe przygotowanie maszyny, krok 3 to już tylko ich
 odpalenie.
 
@@ -101,8 +102,11 @@ i `ocr-api serve --host 0.0.0.0 --port 8000` (OCR obrazowy, model
 drukuje gotową komendę do wklejenia na klienta:
 
 ```
-=== skopiuj na klienta: ============================================
-bash scripts/connect-gpu.sh <public-ip>:8000 <API_KEY> <BACKEND_API_TOKEN>
+=== terminal 1 — backend (na kliencie): =============================
+bash scripts/connect-gpu-backend.sh <public-ip>:8000 <API_KEY> <BACKEND_API_TOKEN>
+
+=== terminal 2 — frontend (na kliencie): ============================
+bash scripts/connect-gpu-frontend.sh <BACKEND_API_TOKEN>
 =====================================================================
 ```
 
@@ -112,13 +116,20 @@ chroni lokalny backend i jest przekazywany do Vite jako `O2J_API_TOKEN`.
 
 ## 5. Połączenie z własnej maszyny (klient)
 
+Terminal 1 — backend:
+
 ```bash
-bash scripts/connect-gpu.sh <public-ip>:8000 <API_KEY> <BACKEND_API_TOKEN>
+bash scripts/connect-gpu-backend.sh <public-ip>:8000 <API_KEY> <BACKEND_API_TOKEN>
 ```
 
-Ustawia `WEB_OCR_BACKEND=remote`, `OCR_SERVICE_URL`, `OCR_SERVICE_KEY`,
-`API_TOKEN` i `O2J_API_TOKEN`, po czym startuje lokalny `backend/main.py`
-na `127.0.0.1:8000` oraz frontend na `localhost:3000`. Cały OCR+LLM idzie
+Terminal 2 — frontend:
+
+```bash
+bash scripts/connect-gpu-frontend.sh <BACKEND_API_TOKEN>
+```
+
+Backend ustawia `WEB_OCR_BACKEND=remote`, `OCR_SERVICE_URL`, `OCR_SERVICE_KEY`
+i `API_TOKEN`. Frontend ustawia `O2J_API_TOKEN` i `O2J_API_TARGET`. Cały OCR+LLM idzie
 przez `POST /analyze` na serwer GPU z nagłówkiem `X-API-Key`.
 
 Weryfikacja bez uruchamiania backendu:

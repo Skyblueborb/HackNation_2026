@@ -25,8 +25,11 @@ trap 'kill "$LLM_PID" "$OCR_PID" 2>/dev/null || true' EXIT INT TERM
 until curl -fsS -o /dev/null http://localhost:8000/health; do sleep 2; done
 IP="$(curl -fsS ifconfig.me || hostname -I | awk '{print $1}')"
 echo
-echo "=== skopiuj na klienta: ============================================"
-echo "bash scripts/connect-gpu.sh ${IP}:8000 ${API_KEY} ${BACKEND_TOKEN}"
+echo "=== terminal 1 — backend (na kliencie): ============================="
+echo "bash scripts/connect-gpu-backend.sh ${IP}:8000 ${API_KEY} ${BACKEND_TOKEN}"
+echo
+echo "=== terminal 2 — frontend (na kliencie): ============================"
+echo "bash scripts/connect-gpu-frontend.sh ${BACKEND_TOKEN}"
 echo "====================================================================="
 echo "BACKEND_API_TOKEN (zapisz go, użyj also w CLI):"
 echo "${BACKEND_TOKEN}"
