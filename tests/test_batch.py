@@ -1,4 +1,6 @@
 import json
+import sys
+import types
 
 import pytest
 
@@ -38,6 +40,31 @@ def test_pdfs_under_walks_cases_and_ignores_other_files(tmp_path):
 
     found = [path.relative_to(tmp_path).as_posix() for path in batch.pdfs_under(tmp_path)]
     assert found == ["case1/odwolanie.pdf", "case2/PRZELEW.PDF"]
+
+
+def test_process_remote_posts_to_the_gpu_service(tmp_path, monkeypatch):
+    pdf = tmp_path / "odwolanie.pdf"
+    pdf.write_bytes(b"%PDF-1.4")
+    seen = {}
+
+    class Response:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"llm": {"data": {"sygnatura": "KIO 1/26"}}}
+
+    def fake_post(url, files, headers, timeout):
+        seen.update(url=url, headers=headers)
+        return Response()
+
+    monkeypatch.setitem(sys.modules, "httpx", types.SimpleNamespace(post=fake_post))
+
+    response = batch.process_remote(pdf, "http://10.0.0.5:8000/", "secret")
+
+    assert seen["url"] == "http://10.0.0.5:8000/analyze"
+    assert seen["headers"] == {"X-API-Key": "secret"}
+    assert batch.result_json(response) == {"sygnatura": "KIO 1/26"}
 
 
 def test_main_mirrors_input_tree_and_survives_one_bad_document(tmp_path, monkeypatch):

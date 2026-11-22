@@ -14,6 +14,7 @@ import json
 import os
 import sys
 import time
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,8 @@ from ocr_common import load_llm_processor
 from ocr_common.textlayer import run_textlayer_async
 
 DEFAULT_PROCESSOR = "ocr_api.llm_processor:processor"
+# Matches the backend's remote-OCR timeout: one long document must not be cut off.
+REMOTE_TIMEOUT = float(os.environ.get("OCR_REMOTE_TIMEOUT", "900"))
 
 
 def result_json(response: dict[str, Any]) -> dict[str, Any]:
@@ -62,10 +65,35 @@ def process(pdf: Path, processor: Any) -> dict[str, Any]:
     )
 
 
+def process_remote(pdf: Path, base_url: str, api_key: str) -> dict[str, Any]:
+    """Send the PDF to `ocr-api serve` on the GPU box and reuse its response.
+
+    `ocr_api` runs the same pipeline there, so the reply has the same `pages` /
+    `llm` shape as the local path and needs no separate result handling.
+    """
+    import httpx
+
+    with pdf.open("rb") as handle:
+        response = httpx.post(
+            f"{base_url.rstrip('/')}/analyze",
+            files={"file": (pdf.name, handle, "application/pdf")},
+            headers={"X-API-Key": api_key} if api_key else {},
+            timeout=REMOTE_TIMEOUT,
+        )
+    response.raise_for_status()
+    return response.json()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="ocr-batch")
     parser.add_argument("--input", type=Path, default=Path("input"))
     parser.add_argument("--output", type=Path, default=Path("output"))
+    parser.add_argument(
+        "--service",
+        default=os.environ.get("OCR_SERVICE_URL", ""),
+        help="base URL of `ocr-api serve` on the GPU box; empty = run locally",
+    )
+    parser.add_argument("--service-key", default=os.environ.get("OCR_SERVICE_KEY", ""))
     args = parser.parse_args()
 
     if not args.input.is_dir():
@@ -76,10 +104,18 @@ def main() -> None:
         print(f"[warn] no PDF found under {args.input}", file=sys.stderr)
         return
 
-    processor = load_llm_processor(
-        os.environ.get("OCR_LLM_PROCESSOR") or DEFAULT_PROCESSOR
-    )
-    print(f"[ok] {len(pdfs)} PDF(s), model={os.environ.get('OCR_LLM_MODEL', 'default')}")
+    if args.service:
+        run = partial(process_remote, base_url=args.service, api_key=args.service_key)
+        print(f"[ok] {len(pdfs)} PDF(s) via {args.service}")
+    else:
+        processor = load_llm_processor(
+            os.environ.get("OCR_LLM_PROCESSOR") or DEFAULT_PROCESSOR
+        )
+        run = partial(process, processor=processor)
+        print(
+            f"[ok] {len(pdfs)} PDF(s) locally, "
+            f"model={os.environ.get('OCR_LLM_MODEL', 'default')}"
+        )
 
     failures = 0
     started = time.perf_counter()
@@ -89,7 +125,7 @@ def main() -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
         t0 = time.perf_counter()
         try:
-            response = process(pdf, processor)
+            response = run(pdf)
         except Exception as exc:  # one bad document must not stop the run
             print(f"[fail] {relative}: {exc}", file=sys.stderr)
             data = {}

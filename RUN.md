@@ -22,20 +22,19 @@ przerywa przebiegu — ten plik dostaje `{}`, reszta jest przetwarzana dalej.
 
 | Element | Gdzie działa |
 |---|---|
-| Ekstrakcja tekstu z PDF (pdfplumber) | lokalnie na tej maszynie, bez GPU |
-| Klasyfikacja dokumentu | lokalnie, reguły + profil n-gramowy |
-| LLM do ekstrakcji pól (**Qwen3-8B**, Apache-2.0, kwantyzacja Q4_K_M) | zewnętrzny serwer GPU NVIDIA, API zgodne z OpenAI |
+| Ekstrakcja tekstu z PDF (pdfplumber) | serwer GPU, przez API |
+| Klasyfikacja dokumentu (reguły + profil n-gramowy) | serwer GPU, przez API |
+| LLM do ekstrakcji pól (**Qwen3-8B**, Apache-2.0, kwantyzacja Q4_K_M) | serwer GPU NVIDIA, `llama.cpp` |
 
 LLM nie jest usługą komercyjną — to ten sam otwarty model (`Qwen/Qwen3-8B-GGUF`)
-postawiony na `llama.cpp` na wynajętej maszynie z kartą NVIDIA, wołany po HTTP.
-Adres i ewentualny klucz są w `/opt/solution/.env`; dostęp do serwera GPU
-utrzymuje usługa `o2j-llm-tunnel.service` (tunel SSH, startuje sama po
-restarcie maszyny).
+postawiony na `llama.cpp` na wynajętej maszynie z kartą NVIDIA. Ta maszyna
+wystawia API (`ocr-api serve`), a adres i klucz dostępu są w
+`/opt/solution/.env` jako `OCR_SERVICE_URL` i `OCR_SERVICE_KEY`.
 
-Sprawdzenie, czy LLM odpowiada (powinno zwrócić JSON, nie błąd połączenia):
+Sprawdzenie, czy usługa odpowiada (powinno zwrócić JSON, nie błąd połączenia):
 
 ```bash
-curl -s http://localhost:8082/health
+source /opt/solution/.env && curl -s "$OCR_SERVICE_URL/health"
 ```
 
 Jeśli to nie odpowiada, przetwarzanie zapisze puste pliki JSON — patrz
@@ -44,5 +43,5 @@ Jeśli to nie odpowiada, przetwarzanie zapisze puste pliki JSON — patrz
 ## Interfejs graficzny (opcjonalny, nie jest potrzebny do oceny)
 
 ```bash
-sudo docker compose up -d        # http://<adres-ip>:3000
+sudo docker compose up -d        # http://<adres-ip>:8080
 ```

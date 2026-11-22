@@ -30,6 +30,10 @@ services:
       # Frontend chodzi przez nginx na porcie 3000.
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
       WEB_OCR_BACKEND: ${WEB_OCR_BACKEND:-text}
+      # WEB_OCR_BACKEND=remote -> cały OCR+LLM liczy `ocr-api serve` na GPU.
+      OCR_SERVICE_URL: ${OCR_SERVICE_URL:-}
+      OCR_SERVICE_KEY: ${OCR_SERVICE_KEY:-}
+      OCR_REMOTE_TIMEOUT: ${OCR_REMOTE_TIMEOUT:-900}
       OCR_LLM_PROCESSOR: ${OCR_LLM_PROCESSOR:-}
       OCR_LLM_MODEL: ${OCR_LLM_MODEL:-qwen3-8b-l4}
     volumes:
@@ -62,16 +66,18 @@ services:
     restart: unless-stopped
 
   # Wsad oceniający: input/ -> output/ jednym przebiegiem, bez GUI i bez portów.
-  # `network_mode: host` jest konieczny, bo LLM jest osiągalny pod
-  # 127.0.0.1:8082 *hosta* (tunel SSH do serwera GPU), a nie w sieci composa.
+  # OCR_SERVICE_URL wskazuje `ocr-api serve` na maszynie z GPU (ten sam adres,
+  # którego używa `web`/`api` przy WEB_OCR_BACKEND=remote). Puste = licz lokalnie.
   batch:
     build:
       context: .
       dockerfile: backend/Dockerfile
     profiles: ["batch"]
-    network_mode: host
     environment:
       O2J_CONFIG_PATH: /app/configs
+      OCR_SERVICE_URL: ${OCR_SERVICE_URL:-}
+      OCR_SERVICE_KEY: ${OCR_SERVICE_KEY:-}
+      OCR_REMOTE_TIMEOUT: ${OCR_REMOTE_TIMEOUT:-900}
       OCR_LLM_PROCESSOR: ${OCR_LLM_PROCESSOR:-ocr_api.llm_processor:processor}
       OCR_LLM_MODEL: ${OCR_LLM_MODEL:-qwen3-8b-l4}
     volumes:
