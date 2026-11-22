@@ -99,6 +99,7 @@ class LabLLMProcessor:
                 "llm_calls": 0,
                 "rejected": True,
                 "sanitized": 0,
+                "confidence": None,
             }
         if class_id not in self.specs:
             return {
@@ -108,6 +109,7 @@ class LabLLMProcessor:
                 "llm_calls": 0,
                 "rejected": False,
                 "sanitized": 0,
+                "confidence": None,
             }
         result = extract_document(
             self.client,
@@ -124,6 +126,7 @@ class LabLLMProcessor:
             "llm_calls": len(result.responses),
             "rejected": False,
             "sanitized": result.sanitized,
+            "confidence": result.confidence,
         }
 
 

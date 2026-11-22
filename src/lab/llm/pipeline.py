@@ -154,6 +154,12 @@ class Extraction:
     filled: int = 0
     sanitized: int = 0
 
+    @property
+    def confidence(self) -> float | None:
+        """Confidence of the call that produced `obj` (the last one), or None
+        before any call has returned (or on a server with no logprobs)."""
+        return self.responses[-1].confidence if self.responses else None
+
 
 @dataclass
 class DocumentOutcome:

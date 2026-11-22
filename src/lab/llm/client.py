@@ -9,6 +9,7 @@ without the field and the fact is recorded in the response.
 from __future__ import annotations
 
 import json
+import math
 import time
 import urllib.error
 import urllib.request
@@ -31,10 +32,19 @@ class LLMResponse:
     completion_tokens: int
     seconds: float
     structured: bool
+    token_logprobs: tuple[float, ...] = ()
 
     @property
     def total_tokens(self) -> int:
         return self.prompt_tokens + self.completion_tokens
+
+    @property
+    def confidence(self) -> float | None:
+        """Geometric-mean probability of the generated tokens, or None if the
+        server returned no logprobs."""
+        if not self.token_logprobs:
+            return None
+        return math.exp(sum(self.token_logprobs) / len(self.token_logprobs))
 
 
 def _is_transient_error(exc: Exception) -> bool:
@@ -105,6 +115,7 @@ class LLMClient:
                 {"role": "system", "content": system},
                 {"role": "user", "content": content},
             ],
+            "logprobs": True,
             **self.model.params,
         }
         if max_tokens is not None:
@@ -148,7 +159,16 @@ class LLMClient:
         usage = _attr_or_key(response, "usage", "usage")
         prompt_tokens = int(_attr_or_key(usage, "prompt_tokens", "prompt_tokens", 0) or 0)
         completion_tokens = int(_attr_or_key(usage, "completion_tokens", "completion_tokens", 0) or 0)
-        return LLMResponse(text, prompt_tokens, completion_tokens, elapsed, structured)
+
+        logprobs_obj = _attr_or_key(message, "logprobs", "logprobs")
+        content_items = _attr_or_key(logprobs_obj, "content", "content") or []
+        token_logprobs = tuple(
+            float(logprob)
+            for item in content_items
+            if (logprob := _attr_or_key(item, "logprob", "logprob")) is not None
+        )
+
+        return LLMResponse(text, prompt_tokens, completion_tokens, elapsed, structured, token_logprobs)
 
     def health(self) -> dict[str, Any]:
         url = self.model.base_url.rsplit("/v1", 1)[0].rstrip("/") + "/health"

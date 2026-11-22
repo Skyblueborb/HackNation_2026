@@ -41,7 +41,11 @@ def test_pipeline_adds_llm_field_without_calling_server(monkeypatch):
         adapter,
         "extract_document",
         lambda *a, **kw: SimpleNamespace(
-            obj={"decyzja": "odwolanie"}, error=None, responses=[1], sanitized=0
+            obj={"decyzja": "odwolanie"},
+            error=None,
+            responses=[1],
+            sanitized=0,
+            confidence=None,
         ),
     )
 
@@ -64,6 +68,7 @@ def test_pipeline_adds_llm_field_without_calling_server(monkeypatch):
         "llm_calls": 1,
         "rejected": False,
         "sanitized": 0,
+        "confidence": None,
     }
     json.dumps(result["llm"])
 
