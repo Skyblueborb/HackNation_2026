@@ -20,7 +20,7 @@ fields:
     kind: string
     nullable: true
     normalizer: nrb26
-    description: "Numer rachunku odbiorcy (NRB, 26 cyfr, bez prefiksu PL)."
+    description: "Numer rachunku odbiorcy (NRB, bez spacji; zachowuje prefiks kraju (np. PL), jeśli występuje w dokumencie)."
 
   - path: przelew_bankowy.numer_transakcji
     kind: string
@@ -32,10 +32,11 @@ fields:
     kind: string
     nullable: true
     normalizer: text
+    fuzzy_threshold: 80
     description: "Tytuł przelewu."
 
   - path: przelew_bankowy.z_rachunku
     kind: string
     nullable: true
     normalizer: nrb26
-    description: "Numer rachunku nadawcy (NRB, 26 cyfr, bez prefiksu PL)."
+    description: "Numer rachunku nadawcy (NRB, bez spacji; zachowuje prefiks kraju (np. PL), jeśli występuje w dokumencie)."

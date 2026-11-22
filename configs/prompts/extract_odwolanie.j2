@@ -11,7 +11,7 @@ Słownik przyczyn odwołania — wybierz pozycję według zdania o zaskarżonej 
 3 = Decyzja o wykluczeniu wykonawcy („wykluczył wykonawcę”)
 4 = Publikacja specyfikacji warunków zamówienia (SWZ) („opublikowano SWZ”)
 5 = Modyfikacja treści SWZ („zmieniono SWZ”)
-6 = Odpowiedzi i wyjaśnienia do SWZ („odpowiedzi i wyjaśnienia do SWZ”)
+6 = Odpowiedzi/wyjaśnienia do SWZ („odpowiedzi i wyjaśnienia do SWZ”)
 7 = Zaniechanie odrzucenia oferty („nie odrzucił oferty”)
 8 = Zaniechanie wykluczenia wykonawcy („nie wykluczył wykonawcy”)
 9 = Decyzja o unieważnieniu postępowania („unieważnił postępowanie”)
@@ -25,7 +25,7 @@ Zasady pól w `OdwolanieKIO`:
 - `czynnosc_powod_id` i `czynnosc_opis`: ustal wyłącznie z pierwszego zdania opisującego zaskarżoną czynność, zwykle po „wnoszę o:” i przed pierwszym zarzutem. Nie używaj tytułu pierwszego zarzutu ani późniejszych wniosków i opisów innego postępowania. Na przykład zdanie „Zamawiający … odrzucił ofertę” daje „Decyzja o odrzuceniu oferty”, natomiast późniejsze wzmianki o unieważnieniu czynności w petitum lub o unieważnionym postępowaniu ubiegłym NIE zmieniają tej odpowiedzi. Wzmianki o OPZ w treści zarzutów NIE są przyczyną odwołania i nie wybieraj pozycji 11 tylko dlatego, że słowo „OPZ” albo „opis przedmiotu zamówienia” pojawia się w uzasadnieniu. Słowo „zaniechanie” w etykiecie oznacza, że czynność NIE została dokonana: „zaniechanie wykluczenia wykonawcy” to pozycja 8, a nie 3 — tekst mówi wówczas, że Zamawiający nie wykluczył wykonawcy. Analogicznie „nie odrzucił oferty” to pozycja 7, a „nie unieważnił postępowania” to pozycja 10. Wybierz jedną etykietę ze słownika w schemacie; jeśli nie pasuje jednoznacznie, wpisz null w obu polach.
 - `przez-pelnomocnika`: 1 tylko wtedy, gdy pismo wprost stwierdza, że wnosi je pełnomocnik; 0 gdy wprost wynika, że nie; null gdy jest to niejednoznaczne.
 
-Pola `imie_nazwisko` dotyczą wyłącznie osób fizycznych. W zwrocie „reprezentowana przez:” rozdziel osoby po przecinku, usuń przedrostki „r. pr.”, „adw.”, „mec.” i podobne. Jedna osoba to jeden obiekt, np. dwa nazwiska po przecinku dają dwa obiekty z osobnymi `imie_nazwisko`. Jeśli nazwiska nie można jednoznacznie przypisać do roli — wpisz null. Pole `pelnomocnik.nazwa` to nazwa kancelarii z linii „adres do korespondencji”, a nie nazwa Odwołującego. Numerów KRS, NIP i REGON nie zamieniaj między Odwołującym a Zamawiającym. Nie przepisuj NIP ani REGON do pola KRS — jeśli dany podmiot nie ma w tekście numeru KRS, wpisz null.
+Pola `imie_nazwisko` dotyczą wyłącznie osób fizycznych. Zapisz imię i nazwisko w mianowniku (np. „Mateusz Szymański”, nie „Mateusza Szymańskiego”), nawet jeśli w tekście występuje w innym przypadku. W zwrocie „reprezentowana przez:” rozdziel osoby po przecinku, usuń przedrostki „r. pr.”, „adw.”, „mec.” i podobne. Jedna osoba to jeden obiekt, np. dwa nazwiska po przecinku dają dwa obiekty z osobnymi `imie_nazwisko`. Jeśli nazwiska nie można jednoznacznie przypisać do roli — wpisz null. Pole `pelnomocnik.nazwa` to nazwa kancelarii z linii „adres do korespondencji”, a nie nazwa Odwołującego. Numerów KRS, NIP i REGON nie zamieniaj między Odwołującym a Zamawiającym. Nie przepisuj NIP ani REGON do pola KRS — jeśli dany podmiot nie ma w tekście numeru KRS, wpisz null.
 
 {% if keys is defined and keys %}
 <klucze_json>

@@ -68,3 +68,21 @@ See `docs/llm-module-contract.md` for the processor contract.
 `ensure_server` reuses an already-healthy server and returns `None` in that
 case. Work with only one profile at a time; the CLI stops only the process it
 started. Logs go to `<work_root>/servers/<model-id>.log`.
+
+## Remote GPU box — SSH tunnel, no code changes
+
+`llama-server` has no auth, so never expose port 8082 (or `ocr_api`'s 8000)
+to the internet. Instead, run `lab serve --model qwen3-8b-l4` on the rented
+GPU box (bound to its own `localhost`) and open a tunnel from your machine:
+
+```bash
+ssh -N -L 8082:localhost:8082 -L 8000:localhost:8000 \
+    -o ServerAliveInterval=30 <user>@<gpu-host>
+```
+
+With the tunnel open, `http://localhost:8082/v1` and `http://localhost:8000`
+resolve to the remote box, so everything that already targets those ports
+works unmodified: `lab run` / `lab predict-one` / `lab sweep` with
+`OCR_LLM_MODEL=qwen3-8b-l4`, `ocr-api serve` with the same env vars from the
+section above, and `backend/main.py` with `OCR_LLM_MODEL=qwen3-8b-l4` (see
+`.env.example`).
