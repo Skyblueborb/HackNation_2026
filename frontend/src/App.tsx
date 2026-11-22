@@ -379,6 +379,7 @@ export default function App() {
           pelnomocnictwo: forms.pelnomocnictwo ?? empty.pelnomocnictwo,
           przelew: forms.przelew ?? empty.przelew,
         };
+        newSlots[i].confidence = result.llm?.confidence ?? null;
         changed = true;
       });
       if (changed) {
@@ -959,6 +960,22 @@ export default function App() {
                         <option value="przelew">Przelew</option>
                       </select>
                     </div>
+                    {activeDoc.confidence != null && (
+                      <div className="clean-row">
+                        <span className="clean-label">Pewność modelu:</span>
+                        <span
+                          className={`gov-badge ${
+                            activeDoc.confidence < 0.7
+                              ? 'danger'
+                              : activeDoc.confidence < 0.9
+                                ? 'warning'
+                                : 'success'
+                          }`}
+                        >
+                          {Math.round(activeDoc.confidence * 100)}%
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* ======================================================== */}

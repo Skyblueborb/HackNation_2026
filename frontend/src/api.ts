@@ -79,7 +79,19 @@ export function analyzeDocument(
   client_token: string,
   doc_class: string,
   client_doc_id?: string,
-): Promise<IngestResult & { canonical_json: any; llm?: any }> {
+): Promise<
+  IngestResult & {
+    canonical_json: any;
+    llm?: {
+      class: string | null;
+      data: any;
+      error: string | null;
+      llm_calls: number;
+      rejected: boolean;
+      confidence: number | null;
+    };
+  }
+> {
   const form = new FormData();
   form.append('client_token', client_token);
   form.append('doc_class', doc_class);

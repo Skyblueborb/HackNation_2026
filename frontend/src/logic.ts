@@ -92,6 +92,7 @@ export interface DocumentSlot {
   sourceName: string;
   file?: ExtractedFile;
   data: FormBundle;        // dane dla każdego typu — zmiana typu nic nie kasuje
+  confidence?: number | null; // pewność modelu LLM dla tej ekstrakcji (0-1), null gdy nieznana
 }
 
 export const CLASS_LABEL: Record<DocClass, string> = {

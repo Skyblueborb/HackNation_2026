@@ -711,6 +711,12 @@ body.high-contrast .gov-tab-btn.active {
   border-color: #faebcc;
 }
 
+.gov-badge.danger {
+  background-color: var(--gov-error-bg);
+  color: var(--gov-error);
+  border-color: var(--gov-error);
+}
+
 @media (max-width: 600px) {
   .service-title {
     font-size: 1.875rem;
