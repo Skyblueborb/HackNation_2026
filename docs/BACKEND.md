@@ -30,6 +30,56 @@ i nie w obrazie.
 Frontend osobno (dev): `cd frontend && npm install && npm run dev`
 (port 3000, proxy `/api` → 8000).
 
+### Frontend lokalnie, OCR + LLM na L4 — bez tunelu SSH
+
+Backend i LLM działają na L4. Frontend działa na Macu i przez `O2J_API_TARGET`
+celuje bezpośrednio w backend na L4. Port LLM (`8082`) zostaje prywatny —
+backend wywołuje go przez `localhost` na tej samej maszynie.
+
+**Na L4:**
+
+```bash
+# 1. LLM — tylko localhost:8082, nie wystawiaj publicznie
+uv run lab serve --model qwen3-8b-l4
+
+# 2. Backend — 0.0.0.0:8000, z API_TOKEN
+API_TOKEN=<token> \
+WEB_OCR_BACKEND=cuda \
+OCR_LLM_PROCESSOR=ocr_api.llm_processor:processor \
+OCR_LLM_MODEL=qwen3-8b-l4 \
+CORS_ORIGINS=http://localhost:3000 \
+uv run --extra gpu --extra serve uvicorn backend.main:app \
+  --host 0.0.0.0 --port 8000
+```
+
+W cloud security group otwórz tylko `8000`. `8082` zostaje zamknięty.
+
+**Na Macu:**
+
+```bash
+cd frontend
+O2J_API_TARGET=http://<L4-IP>:8000 \
+O2J_API_TOKEN=<token> \
+npm run dev
+```
+
+Vite proxy wysyła `/api` na `http://<L4-IP>:8000` i dodaje `X-API-Token`.
+Zmienne są czytane przez proces Node, nie trafiają do bundle'a JS.
+
+CLI z tego samego ustawienia:
+
+```bash
+uv run ocr-pdf2json plik.pdf \
+  --remote http://<L4-IP>:8000 \
+  --api-token <token> \
+  --save-ocr \
+  --out-dir output
+```
+
+Uwaga: backend nie ma env-driven remote OCR clienta. Jeśli chcesz zostawić
+backend na Macu, a OCR na L4, trzeba dodać osobny `WEB_OCR_BACKEND=remote`
+z klientem `/analyze` — obecnie `cuda` ładuje model lokalnie w procesie backendu.
+
 ## Zmienne środowiskowe
 
 Wszystkie opisane są w `.env.example`. Dwie łatwo pomylić:
