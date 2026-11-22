@@ -107,6 +107,21 @@ def test_select_documents_accepts_empty_sidecar_as_reject(tmp_path):
     assert case.gold_stem == "rejected"
 
 
+def test_select_documents_accepts_empty_dict_sidecar_as_reject(tmp_path):
+    root = _make_data_root(tmp_path, n_sets=1)
+    outside = tmp_path / "rejects-dict"
+    outside.mkdir()
+    pdf = outside / "reject-dict.pdf"
+    pdf.write_bytes(_pdf_bytes())
+    pdf.with_suffix(".json").write_text("{}", encoding="utf-8")
+    case = mc.select_documents(
+        root, corpus="przyklad", count=5, random_sample=False, seed=42,
+        sets=None, pdf_paths=[pdf],
+    )[0]
+    assert case.class_id == "nieznany"
+    assert case.gold_stem == "rejected"
+
+
 def test_score_combo_scores_reject_case(tmp_path):
     root = _make_data_root(tmp_path, n_sets=1)
     outside = tmp_path / "rejects2"

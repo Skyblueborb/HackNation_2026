@@ -115,7 +115,7 @@ def _case_from_sidecar(pdf: Path) -> DocumentCase:
         payload = json.loads(gold.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise ValueError(f"sidecar gold is not valid JSON: {gold}") from exc
-    if isinstance(payload, list) and not payload:
+    if isinstance(payload, (dict, list)) and not payload:
         return DocumentCase(
             set_id=f"local_{pdf.stem}",
             pdf=pdf,
