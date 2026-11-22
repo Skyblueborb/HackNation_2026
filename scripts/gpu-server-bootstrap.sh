@@ -11,6 +11,9 @@ uv run lab serve --model qwen3-8b-l4 &
 LLM_PID=$!
 
 source .env
+: "${API_KEY:?API_KEY must be set in .env on the GPU box}"
+
+BACKEND_TOKEN="$(openssl rand -hex 32)"
 
 OCR_LLM_PROCESSOR=ocr_api.llm_processor:processor \
 OCR_LLM_MODEL=qwen3-8b-l4 \
@@ -23,8 +26,10 @@ until curl -fsS -o /dev/null http://localhost:8000/health; do sleep 2; done
 IP="$(curl -fsS ifconfig.me || hostname -I | awk '{print $1}')"
 echo
 echo "=== skopiuj na klienta: ============================================"
-echo "bash scripts/connect-gpu.sh ${IP}:8000 ${API_KEY}"
+echo "bash scripts/connect-gpu.sh ${IP}:8000 ${API_KEY} ${BACKEND_TOKEN}"
 echo "====================================================================="
+echo "BACKEND_API_TOKEN (zapisz go, użyj also w CLI):"
+echo "${BACKEND_TOKEN}"
 echo
 
 wait

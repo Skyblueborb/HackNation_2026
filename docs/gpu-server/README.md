@@ -102,19 +102,24 @@ drukuje gotową komendę do wklejenia na klienta:
 
 ```
 === skopiuj na klienta: ============================================
-bash scripts/connect-gpu.sh <public-ip>:8000 <API_KEY>
+bash scripts/connect-gpu.sh <public-ip>:8000 <API_KEY> <BACKEND_API_TOKEN>
 =====================================================================
 ```
+
+Skrypt generuje `BACKEND_API_TOKEN` poleceniem `openssl rand -hex 32` i
+wypisuje go osobno. `API_KEY` chroni serwis OCR na L4; `BACKEND_API_TOKEN`
+chroni lokalny backend i jest przekazywany do Vite jako `O2J_API_TOKEN`.
 
 ## 5. Połączenie z własnej maszyny (klient)
 
 ```bash
-bash scripts/connect-gpu.sh <public-ip>:8000 <API_KEY>
+bash scripts/connect-gpu.sh <public-ip>:8000 <API_KEY> <BACKEND_API_TOKEN>
 ```
 
-Ustawia `WEB_OCR_BACKEND=remote`, `OCR_SERVICE_URL`, `OCR_SERVICE_KEY` i
-startuje lokalny `backend/main.py` na `127.0.0.1:8000` — cały OCR+LLM idzie
-przez `POST /analyze` na serwer GPU, nagłówek `X-API-Key`.
+Ustawia `WEB_OCR_BACKEND=remote`, `OCR_SERVICE_URL`, `OCR_SERVICE_KEY`,
+`API_TOKEN` i `O2J_API_TOKEN`, po czym startuje lokalny `backend/main.py`
+na `127.0.0.1:8000` oraz frontend na `localhost:3000`. Cały OCR+LLM idzie
+przez `POST /analyze` na serwer GPU z nagłówkiem `X-API-Key`.
 
 Weryfikacja bez uruchamiania backendu:
 
