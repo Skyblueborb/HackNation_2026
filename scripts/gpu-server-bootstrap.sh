@@ -18,14 +18,18 @@ fi
 
 bash scripts/start-ocr-llamacpp.sh &
 OCR_CPP_PID=$!
-for ((i = 0; i < 300; i++)); do
-  curl -fsS -o /dev/null http://127.0.0.1:8083/health && break
+OCR_CPP_READY=0
+for ((i = 0; i < 60; i++)); do
+  if curl -fsS -o /dev/null http://127.0.0.1:8083/v1/models; then
+    OCR_CPP_READY=1
+    break
+  fi
   sleep 2
 done
-curl -fsS -o /dev/null http://127.0.0.1:8083/health || {
-  echo "ERROR: llama.cpp OCR server did not start" >&2
+if [[ "$OCR_CPP_READY" != "1" ]]; then
+  echo "ERROR: llama.cpp OCR server did not start on 8083" >&2
   exit 1
-}
+fi
 
 source .env
 : "${API_KEY:?API_KEY must be set in .env on the GPU box}"
