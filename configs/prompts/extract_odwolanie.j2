@@ -5,10 +5,23 @@ Numery:
 - `numer_bzp` wpisz tylko wtedy, gdy w tekście jest dosłowny numer BZP bieżącego postępowania. „nr referencyjny” NIE jest numerem BZP. Numer BZP z innego, wcześniejszego postępowania wpisz jako null.
 - `numer_ted` wpisz tylko z numeru ogłoszenia TED/Urzędu UE bieżącego postępowania.
 
+Słownik przyczyn odwołania — wybierz pozycję według zdania o zaskarżonej czynności:
+1 = Decyzja o odrzuceniu oferty („odrzucił ofertę”)
+2 = Ogłoszenie wyboru oferty („wybrał ofertę”, „wybór najkorzystniejszej oferty”)
+3 = Decyzja o wykluczeniu wykonawcy („wykluczył wykonawcę”)
+4 = Publikacja specyfikacji warunków zamówienia (SWZ) („opublikowano SWZ”)
+5 = Modyfikacja treści SWZ („zmieniono SWZ”)
+6 = Odpowiedzi i wyjaśnienia do SWZ („odpowiedzi i wyjaśnienia do SWZ”)
+7 = Zaniechanie odrzucenia oferty („nie odrzucił oferty”)
+8 = Zaniechanie wykluczenia wykonawcy („nie wykluczył wykonawcy”)
+9 = Decyzja o unieważnieniu postępowania („unieważnił postępowanie”)
+10 = Zaniechanie unieważnienia postępowania („nie unieważnił postępowania”)
+11 = Opis przedmiotu zamówienia (OPZ) („opis przedmiotu zamówienia”, „OPZ”)
+
 Zasady pól w `OdwolanieKIO`:
 - `data`: tylko data z linii nagłówka w formie „Miejscowość, dnia DD.MM.RRRR”. Jeśli takiej linii nie ma, wpisz null. Nigdy nie używaj daty czynności ani daty wniesienia odwołania.
 - `czynnosc_dzien`: tylko data z wyraźnego zdania opisującego zaskarżoną czynność (np. „Zamawiający w dniu 20 marca 2026 roku unieważnił postępowanie”). Przelicz nazwę miesiąca na ISO. Jeśli zdanie nie podaje daty, wpisz null.
-- `miejscowosc`: tylko miejscowość z tej samej linii nagłówka „Miejscowość, dnia …”. Adresy Odwołującego, Zamawiającego i kancelarii oraz Adres Prezesa KIO na początku dokumentu NIE są wartością tego pola. Nie składaj miejscowości z adresu i daty z innego zdania. Brak takiej linii oznacza null.
+- `miejscowosc`: tylko miejscowość z tej samej linii nagłówka „Miejscowość, dnia …”. Adresy Odwołującego, Zamawiającego i kancelarii oraz Adres Prezesa KIO na początku dokumentu NIE są wartością tego pola. Nie składaj miejscowości z adresu i daty z innego zdania. Przykład: adres „ul. Ratuszowa 1, 86-170 Brzozowo Pomorskie” oraz zdanie „Zamawiający w dniu 4 sierpnia 2026 roku odrzucił ofertę” NIE jest miejscowością — wpisz null. Brak takiej linii oznacza null.
 - `czynnosc_powod_id` i `czynnosc_opis`: ustal wyłącznie z pierwszego zdania opisującego zaskarżoną czynność, zwykle po „wnoszę o:” i przed pierwszym zarzutem. Nie używaj tytułu pierwszego zarzutu ani późniejszych wniosków i opisów innego postępowania. Na przykład zdanie „Zamawiający … odrzucił ofertę” daje „Decyzja o odrzuceniu oferty”, natomiast późniejsze wzmianki o unieważnieniu czynności w petitum lub o unieważnionym postępowaniu ubiegłym NIE zmieniają tej odpowiedzi. Wybierz jedną etykietę ze słownika w schemacie; jeśli nie pasuje jednoznacznie, wpisz null w obu polach.
 - `przez-pelnomocnika`: 1 tylko wtedy, gdy pismo wprost stwierdza, że wnosi je pełnomocnik; 0 gdy wprost wynika, że nie; null gdy jest to niejednoznaczne.
 

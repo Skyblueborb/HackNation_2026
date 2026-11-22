@@ -43,6 +43,35 @@ def test_odwolanie_prompt_separates_header_and_action_dates() -> None:
         assert phrase in template
 
 
+def test_odwolanie_prompt_lists_every_enum_label() -> None:
+    enum = (REPO_ROOT / "configs/enums/czynnosc_powod.yaml").read_text(
+        encoding="utf-8"
+    )
+    labels = [
+        line.split('"', 2)[1]
+        for line in enum.splitlines()
+        if line and line[0].isdigit() and '"' in line
+    ]
+    template = (REPO_ROOT / "configs/prompts/extract_odwolanie.j2").read_text(
+        encoding="utf-8"
+    )
+    assert len(labels) == 11
+    for label in labels:
+        assert label in template, f"Brak etykiety w promptach: {label}"
+
+
+def test_odwolanie_prompt_has_negative_locality_example() -> None:
+    template = (REPO_ROOT / "configs/prompts/extract_odwolanie.j2").read_text(
+        encoding="utf-8"
+    )
+    assert "NIE jest miejscowością" in template
+
+
+def test_transfer_prompt_requires_full_title() -> None:
+    template = PROMPT_PATH.read_text(encoding="utf-8")
+    assert "nie skracaj" in template
+
+
 def test_pelnomocnictwo_prompt_keeps_company_out_of_person_name() -> None:
     template = (REPO_ROOT / "configs/prompts/extract_pelnomocnictwo.j2").read_text(
         encoding="utf-8"

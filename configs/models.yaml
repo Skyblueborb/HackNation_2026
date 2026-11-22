@@ -43,8 +43,8 @@ local-llm:
   port: 8081
   license: Apache-2.0
   no_think_suffix: "/no_think"
-  # 16k context: long przyklad_* documents exceed 8k after OCR.
-  server_flags: "-c 16384 -ngl 99 --jinja --parallel 1"
+  # 32k native context for long przyklad_* documents after OCR.
+  server_flags: "-c 32768 -ngl 99 --jinja --parallel 1"
 
 bielik-11b:
   hf_repo: "speakleash/Bielik-11B-v3.1-Instruct-GGUF:Q4_K_M"
