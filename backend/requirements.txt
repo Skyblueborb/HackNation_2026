@@ -9,5 +9,7 @@ pdfplumber>=0.11
 jinja2>=3.1
 rapidfuzz>=3.0
 openai>=1.40
+# Tryb remote (backend/main.py, ocr_api.batch) wola httpx; openai 3.x ciagnie httpx2, nie httpx.
+httpx>=0.27
 # Document routing (lab.llm.ngram) vectorises text, so the LLM path needs it.
 numpy>=2.1
