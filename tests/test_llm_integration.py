@@ -36,7 +36,7 @@ def test_registry_resolves_adapter_processor():
 
 
 def test_pipeline_adds_llm_field_without_calling_server(monkeypatch):
-    monkeypatch.setattr(adapter, "classify_by_rules", lambda path, text: "odwolanie")
+    monkeypatch.setattr(adapter, "classify_by_rules", lambda text: "odwolanie")
     monkeypatch.setattr(
         adapter,
         "extract_document",

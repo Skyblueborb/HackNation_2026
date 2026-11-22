@@ -54,11 +54,12 @@ def test_enforce_derived_repairs_czynnosc_opis_from_enum_map():
     assert obj["OdwolanieKIO"]["czynnosc_opis"] == enum[key]
 
 
-def test_classify_rules_routes_all_180_pdfs_without_text():
+def test_classify_rules_routes_all_180_pdfs_from_text_alone():
+    """Routing must hold without the filename, which the graded set randomises."""
     for set_dir in sorted(GOLD_DIR.glob("przyklad_*")):
-        for cid, spec in SPECS.items():
-            assert classify_by_rules(set_dir / f"{spec.pdf_stem}.pdf", "") == cid
+        for cid in SPECS:
+            assert classify_by_rules(_text(set_dir.name, cid)) == cid
 
 
-def test_classify_rules_returns_none_for_unknown_stem_and_empty_text():
-    assert classify_by_rules(Path("faktura.pdf"), "") is None
+def test_classify_rules_returns_none_for_empty_text():
+    assert classify_by_rules("") is None

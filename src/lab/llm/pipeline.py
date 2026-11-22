@@ -427,7 +427,7 @@ def run_pipeline(
             cls_response: LLMResponse | None = None
             try:
                 classification, cls_response = classify_document(
-                    active_client, resolved_prompts, pdf_path, text, experiment.classify_method
+                    active_client, resolved_prompts, text, experiment.classify_method
                 )
             except Exception:
                 pass

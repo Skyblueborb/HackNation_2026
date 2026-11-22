@@ -14,10 +14,9 @@ from __future__ import annotations
 
 import os
 import threading
-from pathlib import Path
 from typing import Any
 
-from lab.llm.classify import classify_by_rules, has_veto_marker
+from lab.llm.classify import classify_by_rules
 from lab.llm.client import LLMClient
 from lab.llm.config import load_models
 from lab.llm.pipeline import extract_document
@@ -34,20 +33,6 @@ MODELS_PATH = REPO_ROOT / "configs" / "models.yaml"
 # by default to keep the model's own output and match the baseline experiment.
 # Set OCR_LLM_GROUND_NULL=1 to enable it deliberately.
 GROUND_NULL = os.environ.get("OCR_LLM_GROUND_NULL", "0") == "1"
-
-# A neutral stem matches none of classify_by_rules' filename stems, so routing
-# is decided by text keywords. The filename is used only to break text ties.
-_NEUTRAL_PATH = Path("document.pdf")
-_FILENAME_RULES = (
-    ("odwol", "odwolanie"),
-    ("odwoł", "odwolanie"),
-    ("pelnom", "pelnomocnictwo"),
-    ("pełnom", "pelnomocnictwo"),
-    ("przelew", "potwierdzenie_przelewu"),
-    ("platn", "potwierdzenie_przelewu"),
-    ("trans", "potwierdzenie_przelewu"),
-)
-
 
 def _resolve_model_id(model_id: str | None) -> str:
     return model_id or os.environ.get("OCR_LLM_MODEL", DEFAULT_MODEL)
@@ -74,23 +59,17 @@ def validate_model(model_id: str | None = None) -> None:
         raise ValueError(_unknown_model_message(resolved, models))
 
 
-def classify_document(text: str, filename: str | None) -> str | None:
-    """Route by text; fall back to the filename only when text is ambiguous.
+def classify_document(text: str) -> str | None:
+    """Route on the OCR text alone, exactly as the offline pipeline does.
 
-    Returns None for a document that matches none of the three known classes,
-    so callers reject it instead of force-fitting it into "odwolanie". A veto
-    marker in the text is a hard reject: the filename is not consulted, since
-    the content already proves the document is foreign to all three classes.
+    The uploaded filename is deliberately ignored: in the graded task it never
+    names the document type, so honouring it here would make this path behave
+    differently from the one the experiments are tuned against.
+
+    Returns None for a document matching none of the three known classes, so
+    callers reject it instead of force-fitting it into "odwolanie".
     """
-    if has_veto_marker(text):
-        return None
-    class_id = classify_by_rules(_NEUTRAL_PATH, text)
-    if class_id is None and filename:
-        stem = Path(filename).stem.lower()
-        for needle, candidate in _FILENAME_RULES:
-            if needle in stem:
-                return candidate
-    return class_id
+    return classify_by_rules(text)
 
 
 class LabLLMProcessor:
@@ -107,7 +86,7 @@ class LabLLMProcessor:
 
     def process(self, document: OCRDocument) -> dict[str, Any]:
         text = "\n\n".join(page.text for page in document.pages)
-        class_id = classify_document(text, document.filename)
+        class_id = classify_document(text)
         if class_id is None:
             # Unrecognized document (e.g. a foreign/negative PDF outside the
             # three known classes): reject rather than force-fit it into

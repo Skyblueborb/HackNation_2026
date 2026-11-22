@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections import Counter
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,7 @@ from lab.eval.errors import write_errors_md
 from lab.eval.metrics import EvalResult, evaluate_run, write_metrics
 from lab.llm.client import LLMClient
 from lab.llm.config import ExperimentConfig, ModelConfig, load_experiment, load_models
+from lab.llm.ngram import CentroidModel
 from lab.llm.pipeline import PipelineResult, resolve_set_ids, run_pipeline
 from lab.llm.prompts import PromptSet
 from lab.llm.server import START_TIMEOUT, ensure_server, health_ok, server_command, stop_server
@@ -385,6 +387,47 @@ def models_check(
             )
         finally:
             stop_server(server_proc)
+
+
+@app.command("train-classifier")
+def train_classifier(
+    data_root: Path | None = typer.Option(None, "--data-root"),
+    out: Path = typer.Option(
+        Path("configs/classifier/centroids.npz"), "--out", help="Where to write the centroids."
+    ),
+    extractor: str = typer.Option("pdfplumber", "--extractor", help="Text extractor to train on."),
+) -> None:
+    """Train the document-routing centroids from the labelled PDFs.
+
+    Each class's PDFs are read, vectorised as character n-grams and averaged
+    into one centroid. The artifact is small enough to commit, so routing
+    needs no training step at request time.
+    """
+    resolved_data_root = paths.validate_data_root(
+        data_root if data_root is not None else paths.data_root()
+    )
+    specs = load_all_classes(paths.configs_root() / "classes")
+    data_dir = resolved_data_root / "dane"
+
+    samples: list[tuple[str, str]] = []
+    for set_dir in sorted(data_dir.glob("przyklad_*")):
+        for class_id, spec in specs.items():
+            pdf_path = set_dir / f"{spec.pdf_stem}.pdf"
+            if not pdf_path.exists():
+                continue
+            text = "\n".join(page.text for page in extract_pages(pdf_path, extractor))
+            samples.append((class_id, text))
+
+    if not samples:
+        raise typer.BadParameter(f"no labelled PDFs found under {data_dir}")
+
+    model = CentroidModel.train(samples)
+    out_path = out if out.is_absolute() else paths.REPO_ROOT / out
+    model.save(out_path)
+
+    counts = Counter(label for label, _ in samples)
+    typer.echo(f"trained on {len(samples)} documents: {dict(sorted(counts.items()))}")
+    typer.echo(f"wrote {out_path} ({out_path.stat().st_size / 1024:.0f} kB)")
 
 
 @app.command("predict-one")

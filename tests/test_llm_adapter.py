@@ -9,7 +9,7 @@ def test_lab_llm_processor_uses_coworker_module(monkeypatch):
     monkeypatch.setattr(adapter, "LLMClient", lambda model: "client")
     monkeypatch.setattr(adapter, "PromptSet", lambda: "prompts")
     monkeypatch.setattr(adapter, "load_all_classes", lambda *a: {"odwolanie": "spec"})
-    monkeypatch.setattr(adapter, "classify_by_rules", lambda path, text: "odwolanie")
+    monkeypatch.setattr(adapter, "classify_by_rules", lambda text: "odwolanie")
     monkeypatch.setattr(
         adapter,
         "extract_document",
@@ -34,7 +34,7 @@ def test_lab_llm_processor_missing_spec_has_full_shape(monkeypatch):
     monkeypatch.setattr(adapter, "LLMClient", lambda model: "client")
     monkeypatch.setattr(adapter, "PromptSet", lambda: "prompts")
     monkeypatch.setattr(adapter, "load_all_classes", lambda *a: {})
-    monkeypatch.setattr(adapter, "classify_by_rules", lambda path, text: "odwolanie")
+    monkeypatch.setattr(adapter, "classify_by_rules", lambda text: "odwolanie")
 
     processor = adapter.LabLLMProcessor("qwen")
     document = OCRDocument("mlx", "m", (OCRPage(1, "text"),), filename="odwolanie.pdf")
@@ -52,7 +52,7 @@ def test_lab_llm_processor_rejects_unclassified_document(monkeypatch):
     monkeypatch.setattr(adapter, "LLMClient", lambda model: "client")
     monkeypatch.setattr(adapter, "PromptSet", lambda: "prompts")
     monkeypatch.setattr(adapter, "load_all_classes", lambda *a: {"odwolanie": "spec"})
-    monkeypatch.setattr(adapter, "classify_by_rules", lambda path, text: None)
+    monkeypatch.setattr(adapter, "classify_by_rules", lambda text: None)
 
     processor = adapter.LabLLMProcessor("qwen")
     document = OCRDocument(
@@ -87,7 +87,7 @@ def _ok_extraction():
     return SimpleNamespace(obj={"x": 1}, error=None, responses=[1])
 
 
-def test_routing_uses_text_over_filename(monkeypatch):
+def test_routing_ignores_a_contradicting_filename(monkeypatch):
     processor = _build_processor(monkeypatch)
     seen = {}
 
@@ -106,13 +106,21 @@ def test_routing_uses_text_over_filename(monkeypatch):
     assert seen["ground_null"] == adapter.GROUND_NULL
 
 
-def test_routing_uses_filename_only_as_tie_breaker(monkeypatch):
+def test_ambiguous_text_is_rejected_rather_than_broken_by_the_filename(monkeypatch):
+    """With no decisive marker the document is rejected; the name cannot save it.
+
+    "odwolanie przelew" scores one weak marker per class, so neither clears the
+    margin. The old tie-breaker would have routed this on the filename alone --
+    exactly the crutch the graded task removes.
+    """
     processor = _build_processor(monkeypatch)
     monkeypatch.setattr(adapter, "extract_document", lambda *a, **kw: _ok_extraction())
     document = OCRDocument(
         "mlx", "m", (OCRPage(1, "odwolanie przelew"),), filename="przelew.pdf"
     )
-    assert processor.process(document)["class"] == "potwierdzenie_przelewu"
+    result = processor.process(document)
+    assert result["class"] is None
+    assert result["rejected"] is True
 
 
 def test_ground_null_choice_is_deliberate(monkeypatch):
